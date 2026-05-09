@@ -34,6 +34,37 @@ interface Props {
   cwd: string | null;
   position: "bottom" | "right";
   onTogglePosition: () => void;
+  theme: string;
+}
+
+function getXtermTheme(theme: string) {
+  const themes: Record<string, object> = {
+    dark: {
+      background: "#1e1e1e",
+      foreground: "#d4d4d4",
+      cursor: "#d4d4d4",
+      selectionBackground: "#264f78",
+    },
+    light: {
+      background: "#ffffff",
+      foreground: "#333333",
+      cursor: "#333333",
+      selectionBackground: "#add6ff",
+    },
+    monokai: {
+      background: "#272822",
+      foreground: "#f8f8f2",
+      cursor: "#f8f8f0",
+      selectionBackground: "#49483e",
+    },
+    "solarized-dark": {
+      background: "#002b36",
+      foreground: "#839496",
+      cursor: "#819090",
+      selectionBackground: "#073642",
+    },
+  };
+  return themes[theme] || themes["dark"];
 }
 
 export interface TerminalPanelHandle {
@@ -51,7 +82,7 @@ function getDirName(path: string): string {
   return parts[parts.length - 1] || "Terminal";
 }
 
-const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, onTogglePosition }, ref) => {
+const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, onTogglePosition, theme }, ref) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [tabs, setTabs] = useState<TermTab[]>([]);
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -87,12 +118,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     const effectiveCwd = termCwd || cwd || undefined;
 
     const term = new Terminal({
-      theme: {
-        background: "#1e1e1e",
-        foreground: "#d4d4d4",
-        cursor: "#d4d4d4",
-        selectionBackground: "#264f78",
-      },
+      theme: getXtermTheme(theme) as any,
       fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, monospace",
       fontSize: 13,
       cursorBlink: true,
@@ -140,7 +166,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     });
 
     return newTab;
-  }, [cwd]);
+  }, [cwd, theme]);
 
   useImperativeHandle(ref, () => ({
     createTerminalWithCwd: (dir: string) => {
@@ -204,6 +230,14 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
   useEffect(() => {
     tabsRef.current.forEach((tab) => tab?.fitAddon?.fit());
   }, [position]);
+
+  useEffect(() => {
+    tabsRef.current.forEach((tab) => {
+      if (tab) {
+        tab.terminal.options.theme = getXtermTheme(theme) as any;
+      }
+    });
+  }, [theme]);
 
   const handleRenameTab = (index: number, newTitle: string) => {
     setTabs((prev) =>

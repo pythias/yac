@@ -31,7 +31,7 @@ function getMonacoTheme(theme: string): string {
     dark: "vs-dark",
     light: "vs",
     monokai: "monokai",
-    "solarized-dark": "vs-dark",
+    "solarized-dark": "solarized-dark",
   };
   return map[theme] || "vs-dark";
 }
@@ -61,6 +61,30 @@ export default function MonacoEditor({ file, onChange, onSave, theme }: Props) {
         "editor.foreground": "#f8f8f2",
         "editor.selectionBackground": "#49483e",
         "editorCursor.foreground": "#f8f8f0",
+      },
+    });
+
+    // Register Solarized Dark theme
+    monaco.editor.defineTheme("solarized-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword",   foreground: "859900" },
+        { token: "string",    foreground: "2aa198" },
+        { token: "comment",   foreground: "586e75", fontStyle: "italic" },
+        { token: "number",    foreground: "d33682" },
+        { token: "type",      foreground: "268bd2" },
+        { token: "function",  foreground: "b58900" },
+        { token: "variable",  foreground: "cb4b16" },
+        { token: "constant",  foreground: "6c71c4" },
+      ],
+      colors: {
+        "editor.background":              "#002b36",
+        "editor.foreground":              "#839496",
+        "editor.selectionBackground":     "#073642",
+        "editorCursor.foreground":        "#819090",
+        "editor.lineHighlightBackground": "#073642",
+        "editorLineNumber.foreground":    "#586e75",
       },
     });
 

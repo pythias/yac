@@ -211,6 +211,26 @@ export default function App() {
     document.addEventListener("mouseup", onUp);
   }, [terminalPosition, terminalSize]);
 
+  const handleEditorRightDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startPos = e.clientX;
+    const startSize = terminalSize;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startPos - ev.clientX; // drag left → terminal grows
+      const next = Math.min(700, Math.max(100, startSize + delta));
+      setTerminalSize(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+      setTimeout(() => terminalRef.current?.fitAll(), 50);
+    };
+    window.addEventListener("blur", onUp);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [terminalSize]);
+
   const currentFile = openFiles.find((f) => f.path === activeFile) || null;
 
   return (
@@ -241,7 +261,14 @@ export default function App() {
           className="editor-area"
           style={{ flexDirection: terminalPosition === "right" ? "row" : "column" }}
         >
-          <div className={terminalPosition === "right" ? "editor-main" : undefined} style={terminalPosition === "bottom" ? { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" } : undefined}>
+          <div
+            className={terminalPosition === "right" ? "editor-main" : undefined}
+            style={
+              terminalPosition === "bottom"
+                ? { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }
+                : { position: "relative" }
+            }
+          >
             <EditorTabs
               files={openFiles}
               activeFile={activeFile}
@@ -266,6 +293,13 @@ export default function App() {
                 </div>
               )}
             </div>
+            {terminalPosition === "right" && showTerminal && (
+              <div
+                className="terminal-drag-handle-v"
+                style={{ position: "absolute", right: 0, top: 0, height: "100%", zIndex: 10, width: 4 }}
+                onMouseDown={handleEditorRightDragStart}
+              />
+            )}
           </div>
 
           {showTerminal && (
@@ -293,6 +327,7 @@ export default function App() {
                 cwd={rootPath}
                 position={terminalPosition}
                 onTogglePosition={handleToggleTerminalPosition}
+                theme={theme}
               />
             </div>
           )}
