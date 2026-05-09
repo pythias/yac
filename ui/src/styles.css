@@ -37,12 +37,14 @@ html, body, #root {
 }
 
 .sidebar {
-  width: 220px;
-  min-width: 180px;
+  position: relative;
+  min-width: 140px;
+  max-width: 400px;
   background: #252526;
   border-right: 1px solid #333;
   overflow-y: auto;
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .sidebar-header {
@@ -291,4 +293,61 @@ html, body, #root {
 
 .tab-icon-picker span:hover {
   background: #094771;
+}
+
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.dragging {
+  background: #0af;
+}
+
+/* Terminal drag handle (bottom mode: top edge; right mode: left edge) */
+.terminal-drag-handle-h {
+  height: 4px;
+  cursor: row-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.terminal-drag-handle-h:hover,
+.terminal-drag-handle-h.dragging {
+  background: #0af;
+}
+
+.terminal-drag-handle-v {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.terminal-drag-handle-v:hover,
+.terminal-drag-handle-v.dragging {
+  background: #0af;
+}
+
+/* editor-main wrapper used in right mode */
+.editor-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* terminal-container right mode override */
+.terminal-container.right {
+  border-top: none;
+  border-left: 1px solid #333;
+  display: flex;
+  flex-direction: column;
 }
