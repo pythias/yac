@@ -28,7 +28,26 @@ const PRESET_COLORS = [
   { label: "橙",   value: "#ffb74d" },
 ];
 
-const PRESET_ICONS = ["🚀", "🔥", "⚡", "🐛", "🌿", "📦", "🔧", "🎯", "💻", "🌐"];
+const PRESET_ICONS = [
+  "terminal",      "code",          "bolt",          "bug",
+  "server",        "database",      "code-branch",   "cube",
+  "rocket",        "gear",          "flask",         "fire",
+  "layer-group",   "network-wired", "microchip",     "folder",
+  "play",          "key",           "cloud",         "leaf",
+];
+
+function expandHex(hex: string): string {
+  const h = hex.replace("#", "");
+  return h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+}
+
+function iconColor(bgColor: string): string {
+  const hex = expandHex(bgColor);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return r + g + b > 382 ? "#000" : "#fff";
+}
 
 interface Props {
   cwd: string | null;
@@ -304,7 +323,20 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <span>{tab.icon ? tab.icon + " " : ""}{tab.title}</span>
+              <>
+                <div style={{
+                  width: 16, height: 16, borderRadius: 3,
+                  background: tab.color ?? "#0af",
+                  display: "flex", alignItems: "center",
+                  justifyContent: "center", flexShrink: 0,
+                }}>
+                  <i
+                    className={`fa-solid fa-${tab.icon ?? "terminal"}`}
+                    style={{ fontSize: 9, color: iconColor(tab.color ?? "#0af") }}
+                  />
+                </div>
+                <span>{tab.title}</span>
+              </>
             )}
             {tabs.length > 1 && (
               <span
@@ -390,22 +422,30 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
           className="tab-icon-picker"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {PRESET_ICONS.map((emoji) => (
-            <span
-              key={emoji}
-              title={emoji}
-              onClick={() => {
-                setTabs((prev) =>
-                  prev.map((t, i) =>
-                    i === contextMenu.targetIndex ? { ...t, icon: emoji } : t
-                  )
-                );
-                setContextMenu(null);
-              }}
-            >
-              {emoji}
-            </span>
-          ))}
+          {PRESET_ICONS.map((iconName) => {
+            const currentColor = tabs[contextMenu.targetIndex]?.color ?? "#0af";
+            return (
+              <div
+                key={iconName}
+                className="icon-swatch"
+                title={iconName}
+                style={{ background: currentColor }}
+                onClick={() => {
+                  setTabs((prev) =>
+                    prev.map((t, i) =>
+                      i === contextMenu.targetIndex ? { ...t, icon: iconName } : t
+                    )
+                  );
+                  setContextMenu(null);
+                }}
+              >
+                <i
+                  className={`fa-solid fa-${iconName}`}
+                  style={{ fontSize: 11, color: iconColor(currentColor) }}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </>
