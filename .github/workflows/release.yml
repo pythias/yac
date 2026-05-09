@@ -41,7 +41,6 @@ jobs:
 
       - name: Build Tauri app
         run: cargo tauri build --target aarch64-apple-darwin
-        working-directory: src-tauri
 
       - name: Find DMG
         id: find_dmg
