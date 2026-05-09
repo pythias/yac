@@ -147,7 +147,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       createTerminal(dir);
     },
     fitAll: () => {
-      tabsRef.current.forEach((tab) => tab.fitAddon.fit());
+      tabsRef.current.forEach((tab) => tab?.fitAddon?.fit());
     },
   }), [createTerminal]);
 
@@ -200,6 +200,10 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [contextMenu?.submenu]);
+
+  useEffect(() => {
+    tabsRef.current.forEach((tab) => tab?.fitAddon?.fit());
+  }, [position]);
 
   const handleRenameTab = (index: number, newTitle: string) => {
     setTabs((prev) =>

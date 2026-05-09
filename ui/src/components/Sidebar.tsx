@@ -31,7 +31,9 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
     };
+    window.addEventListener("blur", onUp);
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   };
