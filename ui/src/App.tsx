@@ -42,6 +42,28 @@ export default function App() {
   const [rootPath, setRootPath] = useState<string | null>(saved.current.rootPath || null);
   const terminalRef = useRef<TerminalPanelHandle>(null);
 
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    () => Number(localStorage.getItem("yac-sidebar-width")) || 220
+  );
+  const [terminalPosition, setTerminalPosition] = useState<"bottom" | "right">(
+    () => (localStorage.getItem("yac-terminal-position") as "bottom" | "right") || "bottom"
+  );
+  const [terminalSize, setTerminalSize] = useState<number>(
+    () => Number(localStorage.getItem("yac-terminal-size")) || 250
+  );
+
+  useEffect(() => {
+    localStorage.setItem("yac-sidebar-width", String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem("yac-terminal-position", terminalPosition);
+  }, [terminalPosition]);
+
+  useEffect(() => {
+    localStorage.setItem("yac-terminal-size", String(terminalSize));
+  }, [terminalSize]);
+
   // 恢复之前打开的文件
   useEffect(() => {
     const restore = async () => {
@@ -148,6 +170,32 @@ export default function App() {
     }, 0);
   }, []);
 
+  const handleToggleTerminalPosition = useCallback(() => {
+    setTerminalPosition((prev) => (prev === "bottom" ? "right" : "bottom"));
+    setTimeout(() => terminalRef.current?.fitAll(), 50);
+  }, []);
+
+  const handleTerminalDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const isBottom = terminalPosition === "bottom";
+    const startPos = isBottom ? e.clientY : e.clientX;
+    const startSize = terminalSize;
+    const onMove = (ev: MouseEvent) => {
+      const delta = isBottom ? startPos - ev.clientY : startPos - ev.clientX;
+      const next = Math.min(isBottom ? 600 : 700, Math.max(100, startSize + delta));
+      setTerminalSize(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+      setTimeout(() => terminalRef.current?.fitAll(), 50);
+    };
+    window.addEventListener("blur", onUp);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [terminalPosition, terminalSize]);
+
   const currentFile = openFiles.find((f) => f.path === activeFile) || null;
 
   return (
@@ -159,34 +207,65 @@ export default function App() {
           setRootPath={setRootPath}
           onOpenFile={openFile}
           onOpenTerminal={handleOpenTerminal}
+          width={sidebarWidth}
+          onWidthChange={setSidebarWidth}
         />
-        <div className="editor-area">
-          <EditorTabs
-            files={openFiles}
-            activeFile={activeFile}
-            onSelect={setActiveFile}
-            onClose={closeFile}
-            onCloseOthers={closeOthers}
-            onCloseRight={closeRight}
-          />
-          <div className="editor-container">
-            {currentFile && (
-              <MonacoEditor
-                key={currentFile.path}
-                file={currentFile}
-                onChange={(val) => updateFileContent(currentFile.path, val)}
-                onSave={() => saveFile(currentFile.path)}
-              />
-            )}
-            {!currentFile && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#666" }}>
-                Open a file from the sidebar
-              </div>
-            )}
+        <div
+          className="editor-area"
+          style={{ flexDirection: terminalPosition === "right" ? "row" : "column" }}
+        >
+          <div className={terminalPosition === "right" ? "editor-main" : undefined} style={terminalPosition === "bottom" ? { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" } : undefined}>
+            <EditorTabs
+              files={openFiles}
+              activeFile={activeFile}
+              onSelect={setActiveFile}
+              onClose={closeFile}
+              onCloseOthers={closeOthers}
+              onCloseRight={closeRight}
+            />
+            <div className="editor-container">
+              {currentFile && (
+                <MonacoEditor
+                  key={currentFile.path}
+                  file={currentFile}
+                  onChange={(val) => updateFileContent(currentFile.path, val)}
+                  onSave={() => saveFile(currentFile.path)}
+                />
+              )}
+              {!currentFile && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#666" }}>
+                  Open a file from the sidebar
+                </div>
+              )}
+            </div>
           </div>
+
           {showTerminal && (
-            <div className="terminal-container">
-              <TerminalPanel ref={terminalRef} cwd={rootPath} />
+            <div
+              className={`terminal-container${terminalPosition === "right" ? " right" : ""}`}
+              style={
+                terminalPosition === "bottom"
+                  ? { height: terminalSize }
+                  : { width: terminalSize }
+              }
+            >
+              {terminalPosition === "bottom" ? (
+                <div
+                  className="terminal-drag-handle-h"
+                  onMouseDown={handleTerminalDragStart}
+                />
+              ) : (
+                <div
+                  className="terminal-drag-handle-v"
+                  onMouseDown={handleTerminalDragStart}
+                />
+              )}
+              <TerminalPanel
+                ref={terminalRef}
+                cwd={rootPath}
+                position={terminalPosition}
+                onTogglePosition={handleToggleTerminalPosition}
+              />
             </div>
           )}
         </div>
