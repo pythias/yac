@@ -32,10 +32,13 @@ const PRESET_ICONS = ["🚀", "🔥", "⚡", "🐛", "🌿", "📦", "🔧", "�
 
 interface Props {
   cwd: string | null;
+  position: "bottom" | "right";
+  onTogglePosition: () => void;
 }
 
 export interface TerminalPanelHandle {
   createTerminalWithCwd: (cwd: string) => void;
+  fitAll: () => void;
 }
 
 interface PtyOutputEvent {
@@ -48,7 +51,7 @@ function getDirName(path: string): string {
   return parts[parts.length - 1] || "Terminal";
 }
 
-const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd }, ref) => {
+const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, onTogglePosition }, ref) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [tabs, setTabs] = useState<TermTab[]>([]);
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -142,6 +145,9 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd }, ref) => {
   useImperativeHandle(ref, () => ({
     createTerminalWithCwd: (dir: string) => {
       createTerminal(dir);
+    },
+    fitAll: () => {
+      tabsRef.current.forEach((tab) => tab.fitAddon.fit());
     },
   }), [createTerminal]);
 
@@ -276,6 +282,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd }, ref) => {
           </div>
         ))}
         <button onClick={() => createTerminal()}>+</button>
+        <button
+          title={position === "bottom" ? "移到右侧" : "移到底部"}
+          onClick={onTogglePosition}
+          style={{ marginLeft: "auto" }}
+        >
+          {position === "bottom" ? "⊡" : "⊟"}
+        </button>
       </div>
       <div className="terminal-body" ref={wrapperRef} />
       {contextMenu && contextMenu.submenu === null && (
