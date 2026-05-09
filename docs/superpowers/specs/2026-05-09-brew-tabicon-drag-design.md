@@ -12,7 +12,7 @@ Date: 2026-05-09
 
 ### 架构
 
-**Tap 仓库**：`github.com/<owner>/homebrew-yac`
+**Tap 仓库**：`github.com/pythias/homebrew-yac`
 - `Casks/yac.rb` — Homebrew Cask formula
 
 **主仓库新增两个 workflow**：
@@ -45,11 +45,11 @@ cask "yac" do
   version "0.1.0"
   sha256 "PLACEHOLDER_SHA256"
 
-  url "https://github.com/<owner>/yac/releases/download/v#{version}/Yac.IDE_#{version}_aarch64.dmg"
+  url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_aarch64.dmg"
 
   name "Yac IDE"
   desc "A minimal IDE built with Tauri + React"
-  homepage "https://github.com/<owner>/yac"
+  homepage "https://github.com/pythias/yac"
 
   app "Yac IDE.app"
 
