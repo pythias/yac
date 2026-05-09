@@ -35,6 +35,12 @@ function saveState(state: SavedState) {
 }
 
 export default function App() {
+  // Initialize data-theme immediately to avoid flash on first render
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme =
+      localStorage.getItem("yac-theme") || "dark";
+  }
+
   const saved = useRef(loadState());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(saved.current.activeFile || null);
@@ -51,6 +57,15 @@ export default function App() {
   const [terminalSize, setTerminalSize] = useState<number>(
     () => Number(localStorage.getItem("yac-terminal-size")) || 250
   );
+
+  const [theme, setTheme] = useState<string>(
+    () => localStorage.getItem("yac-theme") || "dark"
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("yac-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     localStorage.setItem("yac-sidebar-width", String(sidebarWidth));
@@ -200,7 +215,19 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="titlebar">Yac IDE{rootPath ? ` — ${rootPath}` : ""}</div>
+      <div className="titlebar">
+        <span>Yac IDE{rootPath ? ` — ${rootPath}` : ""}</span>
+        <select
+          className="theme-selector"
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+        >
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="monokai">Monokai</option>
+          <option value="solarized-dark">Solarized Dark</option>
+        </select>
+      </div>
       <div className="main-content">
         <Sidebar
           rootPath={rootPath}
@@ -230,6 +257,7 @@ export default function App() {
                   file={currentFile}
                   onChange={(val) => updateFileContent(currentFile.path, val)}
                   onSave={() => saveFile(currentFile.path)}
+                  theme={theme}
                 />
               )}
               {!currentFile && (
