@@ -43,10 +43,11 @@ function expandHex(hex: string): string {
 
 function iconColor(bgColor: string): string {
   const hex = expandHex(bgColor);
+  if (hex.length !== 6) return "#fff";
   const r = parseInt(hex.slice(0, 2), 16);
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
-  return r + g + b > 382 ? "#000" : "#fff";
+  return 0.299 * r + 0.587 * g + 0.114 * b > 128 ? "#000" : "#fff";
 }
 
 interface Props {
@@ -417,14 +418,14 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
           ))}
         </div>
       )}
-      {contextMenu && contextMenu.submenu === "icon" && (
-        <div
-          className="tab-icon-picker"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {PRESET_ICONS.map((iconName) => {
-            const currentColor = tabs[contextMenu.targetIndex]?.color ?? "#0af";
-            return (
+      {contextMenu && contextMenu.submenu === "icon" && (() => {
+        const currentColor = tabs[contextMenu.targetIndex]?.color ?? "#0af";
+        return (
+          <div
+            className="tab-icon-picker"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            {PRESET_ICONS.map((iconName) => (
               <div
                 key={iconName}
                 className="icon-swatch"
@@ -444,10 +445,10 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
                   style={{ fontSize: 11, color: iconColor(currentColor) }}
                 />
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        );
+      })()}
     </>
   );
 });

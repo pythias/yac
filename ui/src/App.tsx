@@ -216,7 +216,7 @@ export default function App() {
     window.addEventListener("blur", onUp);
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [terminalPosition, terminalSize]);
+  }, [terminalPosition]);
 
   const handleEditorRightDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -240,7 +240,7 @@ export default function App() {
     window.addEventListener("blur", onUp);
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [terminalSize]);
+  }, []);
 
   const currentFile = openFiles.find((f) => f.path === activeFile) || null;
 
