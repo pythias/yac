@@ -24,9 +24,9 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = width;
+    const min = window.innerWidth * 0.1;
+    const max = window.innerWidth * 0.9;
     const onMove = (ev: MouseEvent) => {
-      const min = window.innerWidth * 0.1;
-      const max = window.innerWidth * 0.9;
       const next = Math.min(max, Math.max(min, startWidth + ev.clientX - startX));
       onWidthChange(next);
     };
