@@ -47,6 +47,7 @@ export default function App() {
   const [showTerminal, setShowTerminal] = useState(saved.current.showTerminal !== false);
   const [rootPath, setRootPath] = useState<string | null>(saved.current.rootPath || null);
   const terminalRef = useRef<TerminalPanelHandle>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
 
   const [sidebarWidth, setSidebarWidth] = useState<number>(
     () => Number(localStorage.getItem("yac-sidebar-width")) || 220
@@ -195,9 +196,15 @@ export default function App() {
     const isBottom = terminalPosition === "bottom";
     const startPos = isBottom ? e.clientY : e.clientX;
     const startSize = terminalSize;
+    const container = mainContentRef.current;
     const onMove = (ev: MouseEvent) => {
+      const total = isBottom
+        ? (container?.clientHeight ?? window.innerHeight)
+        : (container?.clientWidth ?? window.innerWidth);
+      const min = total * 0.1;
+      const max = total * 0.9;
       const delta = isBottom ? startPos - ev.clientY : startPos - ev.clientX;
-      const next = Math.min(isBottom ? 600 : 700, Math.max(100, startSize + delta));
+      const next = Math.min(max, Math.max(min, startSize + delta));
       setTerminalSize(next);
     };
     const onUp = () => {
@@ -215,9 +222,13 @@ export default function App() {
     e.preventDefault();
     const startPos = e.clientX;
     const startSize = terminalSize;
+    const container = mainContentRef.current;
     const onMove = (ev: MouseEvent) => {
-      const delta = startPos - ev.clientX; // drag left → terminal grows
-      const next = Math.min(700, Math.max(100, startSize + delta));
+      const total = container?.clientWidth ?? window.innerWidth;
+      const min = total * 0.1;
+      const max = total * 0.9;
+      const delta = startPos - ev.clientX;
+      const next = Math.min(max, Math.max(min, startSize + delta));
       setTerminalSize(next);
     };
     const onUp = () => {
@@ -248,7 +259,7 @@ export default function App() {
           <option value="solarized-dark">Solarized Dark</option>
         </select>
       </div>
-      <div className="main-content">
+      <div className="main-content" ref={mainContentRef}>
         <Sidebar
           rootPath={rootPath}
           setRootPath={setRootPath}
