@@ -299,10 +299,12 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd }, ref) => {
             },
             {
               label: "改变颜色",
+              keepOpen: true,
               action: () => setContextMenu((prev) => prev ? { ...prev, submenu: "color" } : null),
             },
             {
               label: "改变图标",
+              keepOpen: true,
               action: () => setContextMenu((prev) => prev ? { ...prev, submenu: "icon" } : null),
             },
           ]}
