@@ -1,3 +1,69 @@
+/* ── Theme Variables ─────────────────────────────── */
+:root[data-theme="dark"] {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #323233;
+  --bg-hover: #2a2d2e;
+  --bg-active: #37373d;
+  --text-primary: #d4d4d4;
+  --text-secondary: #888;
+  --border-color: #333;
+  --accent-color: #0af;
+  --tab-active-bg: #1e1e1e;
+  --context-menu-bg: #2d2d30;
+  --context-menu-border: #454545;
+  --context-menu-hover: #094771;
+}
+
+:root[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-tertiary: #dddddd;
+  --bg-hover: #e8e8e8;
+  --bg-active: #d0d0d0;
+  --text-primary: #1e1e1e;
+  --text-secondary: #555;
+  --border-color: #ccc;
+  --accent-color: #0066cc;
+  --tab-active-bg: #ffffff;
+  --context-menu-bg: #ffffff;
+  --context-menu-border: #ccc;
+  --context-menu-hover: #e0eeff;
+}
+
+:root[data-theme="monokai"] {
+  --bg-primary: #272822;
+  --bg-secondary: #1e1f1b;
+  --bg-tertiary: #1a1b18;
+  --bg-hover: #3e3d32;
+  --bg-active: #49483e;
+  --text-primary: #f8f8f2;
+  --text-secondary: #75715e;
+  --border-color: #49483e;
+  --accent-color: #a6e22e;
+  --tab-active-bg: #272822;
+  --context-menu-bg: #1e1f1b;
+  --context-menu-border: #49483e;
+  --context-menu-hover: #49483e;
+}
+
+:root[data-theme="solarized-dark"] {
+  --bg-primary: #002b36;
+  --bg-secondary: #073642;
+  --bg-tertiary: #073642;
+  --bg-hover: #0d4251;
+  --bg-active: #124f5e;
+  --text-primary: #839496;
+  --text-secondary: #586e75;
+  --border-color: #073642;
+  --accent-color: #268bd2;
+  --tab-active-bg: #002b36;
+  --context-menu-bg: #073642;
+  --context-menu-border: #124f5e;
+  --context-menu-hover: #124f5e;
+}
+/* ─────────────────────────────────────────────────── */
+
 * {
   margin: 0;
   padding: 0;
@@ -8,8 +74,8 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .app {
@@ -20,12 +86,12 @@ html, body, #root {
 
 .titlebar {
   height: 32px;
-  background: #323233;
+  background: var(--bg-tertiary);
   display: flex;
   align-items: center;
   padding: 0 12px;
   font-size: 12px;
-  color: #999;
+  color: var(--text-secondary);
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -40,8 +106,8 @@ html, body, #root {
   position: relative;
   min-width: 140px;
   max-width: 400px;
-  background: #252526;
-  border-right: 1px solid #333;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
   overflow-y: auto;
   font-size: 13px;
   flex-shrink: 0;
@@ -51,7 +117,7 @@ html, body, #root {
   padding: 8px 12px;
   font-size: 11px;
   text-transform: uppercase;
-  color: #888;
+  color: var(--text-secondary);
   font-weight: 600;
   user-select: none;
   -webkit-user-select: none;
@@ -69,11 +135,11 @@ html, body, #root {
 }
 
 .file-tree-item:hover {
-  background: #2a2d2e;
+  background: var(--bg-hover);
 }
 
 .file-tree-item.active {
-  background: #37373d;
+  background: var(--bg-active);
 }
 
 .file-tree-item .icon {
@@ -91,11 +157,11 @@ html, body, #root {
 
 .tabs {
   display: flex;
-  background: #2d2d2d;
+  background: var(--bg-secondary);
   height: 35px;
   align-items: center;
   overflow-x: auto;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-color);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -104,7 +170,7 @@ html, body, #root {
   padding: 6px 16px;
   font-size: 12px;
   cursor: pointer;
-  border-right: 1px solid #333;
+  border-right: 1px solid var(--border-color);
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -114,8 +180,8 @@ html, body, #root {
 }
 
 .tab.active {
-  background: #1e1e1e;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--tab-active-bg);
+  border-bottom: 1px solid var(--tab-active-bg);
 }
 
 .tab .close-btn {
@@ -134,15 +200,15 @@ html, body, #root {
 }
 
 .terminal-container {
-  border-top: 1px solid #333;
-  background: #1e1e1e;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
 }
 
 .terminal-tabs {
   display: flex;
   align-items: center;
   height: 28px;
-  background: #252526;
+  background: var(--bg-secondary);
   padding: 0 8px;
   font-size: 11px;
   gap: 4px;
@@ -153,14 +219,14 @@ html, body, #root {
 .terminal-tabs button {
   background: none;
   border: none;
-  color: #999;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 2px 8px;
   font-size: 11px;
 }
 
 .terminal-tabs button:hover {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .terminal-body {
@@ -174,14 +240,14 @@ html, body, #root {
   gap: 4px;
   padding: 2px 8px;
   cursor: pointer;
-  color: #999;
+  color: var(--text-secondary);
   font-size: 11px;
   user-select: none;
   -webkit-user-select: none;
 }
 
 .terminal-tab-item:hover {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .terminal-tab-close {
@@ -198,8 +264,8 @@ html, body, #root {
 /* Context Menu */
 .context-menu {
   position: fixed;
-  background: #2d2d30;
-  border: 1px solid #454545;
+  background: var(--context-menu-bg);
+  border: 1px solid var(--context-menu-border);
   border-radius: 4px;
   padding: 4px 0;
   min-width: 160px;
@@ -211,25 +277,25 @@ html, body, #root {
 .context-menu-item {
   padding: 6px 16px;
   cursor: pointer;
-  color: #ccc;
+  color: var(--text-primary);
 }
 
 .context-menu-item:hover {
-  background: #094771;
-  color: #fff;
+  background: var(--context-menu-hover);
+  color: var(--text-primary);
 }
 
 .context-menu-separator {
   height: 1px;
-  background: #454545;
+  background: var(--context-menu-border);
   margin: 4px 0;
 }
 
 /* Rename input in file tree */
 .rename-input {
-  background: #1e1e1e;
-  border: 1px solid #0af;
-  color: #d4d4d4;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-color);
+  color: var(--text-primary);
   font-size: 12px;
   padding: 1px 4px;
   outline: none;
@@ -240,8 +306,8 @@ html, body, #root {
 /* Tab color picker */
 .tab-color-picker {
   position: fixed;
-  background: #2d2d30;
-  border: 1px solid #454545;
+  background: var(--context-menu-bg);
+  border: 1px solid var(--context-menu-border);
   border-radius: 4px;
   padding: 8px;
   z-index: 10000;
@@ -268,8 +334,8 @@ html, body, #root {
 /* Tab icon picker */
 .tab-icon-picker {
   position: fixed;
-  background: #2d2d30;
-  border: 1px solid #454545;
+  background: var(--context-menu-bg);
+  border: 1px solid var(--context-menu-border);
   border-radius: 4px;
   padding: 8px;
   z-index: 10000;
@@ -292,7 +358,7 @@ html, body, #root {
 }
 
 .tab-icon-picker span:hover {
-  background: #094771;
+  background: var(--context-menu-hover);
 }
 
 /* Sidebar resize handle */
@@ -308,7 +374,7 @@ html, body, #root {
 
 .sidebar-resize-handle:hover,
 .sidebar-resize-handle.dragging {
-  background: #0af;
+  background: var(--accent-color);
 }
 
 /* Terminal drag handle (bottom mode: top edge; right mode: left edge) */
@@ -321,7 +387,7 @@ html, body, #root {
 
 .terminal-drag-handle-h:hover,
 .terminal-drag-handle-h.dragging {
-  background: #0af;
+  background: var(--accent-color);
 }
 
 .terminal-drag-handle-v {
@@ -333,7 +399,7 @@ html, body, #root {
 
 .terminal-drag-handle-v:hover,
 .terminal-drag-handle-v.dragging {
-  background: #0af;
+  background: var(--accent-color);
 }
 
 /* editor-main wrapper used in right mode */
@@ -347,7 +413,25 @@ html, body, #root {
 /* terminal-container right mode override */
 .terminal-container.right {
   border-top: none;
-  border-left: 1px solid #333;
+  border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+}
+
+/* Theme selector in titlebar */
+.theme-selector {
+  margin-left: auto;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.theme-selector:focus {
+  outline: none;
+  border-color: var(--accent-color);
 }
