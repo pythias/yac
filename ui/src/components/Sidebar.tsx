@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ContextMenu, { MenuItem } from "./ContextMenu";
+import SearchPanel from "./SearchPanel";
 
 interface FileEntry {
   name: string;
@@ -15,9 +16,11 @@ interface Props {
   onOpenTerminal?: (cwd: string) => void;
   width: number;
   onWidthChange: (w: number) => void;
+  showSearch: boolean;
+  onToggleSearch: () => void;
 }
 
-export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTerminal, width, onWidthChange }: Props) {
+export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTerminal, width, onWidthChange, showSearch, onToggleSearch }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
@@ -66,27 +69,24 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
   const handleOpen = async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    
+
     const selected = await open({ directory: true, multiple: false });
     if (selected) {
       if (!rootPath) {
-        // If current window is empty, just open here
         setRootPath(selected as string);
       } else {
-        // Open in a new window
         const label = `win_${Date.now()}`;
         const url = `index.html?rootPath=${encodeURIComponent(selected as string)}`;
-        
+
         const webview = new WebviewWindow(label, {
           title: `Yac IDE — ${selected}`,
           width: 1200,
           height: 800,
           url: url
         });
-        
+
         webview.once("tauri://error", (e) => {
           console.error("Failed to open new window:", e);
-          // Fallback if window creation fails
           setRootPath(selected as string);
         });
       }
@@ -255,13 +255,39 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
 
   return (
     <div className="sidebar" style={{ width }}>
-      <div className="sidebar-header">
-        Explorer
-        <button onClick={handleOpen} style={{ marginLeft: "auto", background: "none", border: "none", color: "#0af", cursor: "pointer", fontSize: 11 }}>
-          Open Folder
+      <div className="sidebar-view-tabs">
+        <button
+          className={`sidebar-view-tab ${!showSearch ? "active" : ""}`}
+          onClick={() => { if (showSearch) onToggleSearch(); }}
+          title="Explorer"
+        >
+          <i className="fa-regular fa-folder"></i>
+        </button>
+        <button
+          className={`sidebar-view-tab ${showSearch ? "active" : ""}`}
+          onClick={() => { if (!showSearch) onToggleSearch(); }}
+          title="Search"
+        >
+          <i className="fa-solid fa-magnifying-glass"></i>
         </button>
       </div>
-      {entries.map((e) => renderEntry(e, 0))}
+      {showSearch ? (
+        <SearchPanel
+          rootPath={rootPath}
+          onOpenFile={onOpenFile}
+          onClose={() => onToggleSearch()}
+        />
+      ) : (
+        <>
+          <div className="sidebar-header">
+            Explorer
+            <button onClick={handleOpen} style={{ marginLeft: "auto", background: "none", border: "none", color: "#0af", cursor: "pointer", fontSize: 11 }}>
+              Open Folder
+            </button>
+          </div>
+          {entries.map((e) => renderEntry(e, 0))}
+        </>
+      )}
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}

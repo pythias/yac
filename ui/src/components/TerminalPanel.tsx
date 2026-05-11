@@ -136,6 +136,15 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     targetIndex: number;
     submenu: "color" | "icon" | null;
   } | null>(null);
+  const safeSearch = useCallback((tab: TermTab | undefined, action: "findNext" | "findPrevious", query: string) => {
+    if (!tab || !query) return;
+    try {
+      tab.searchAddon[action](query);
+    } catch {
+      // xterm-addon-search may panic on fresh terminals or WebGL contexts
+    }
+  }, []);
+
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -406,15 +415,6 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
         ))}
         <button onClick={() => createTerminal()}>+</button>
         <button
-          title="Search (Cmd+F)"
-          onClick={() => {
-            setShowSearch((v) => !v);
-            setTimeout(() => searchInputRef.current?.focus(), 0);
-          }}
-        >
-          🔍
-        </button>
-        <button
           title={position === "bottom" ? "移到右侧" : "移到底部"}
           onClick={onTogglePosition}
           style={{ marginLeft: "auto" }}
@@ -430,21 +430,14 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              const tab = tabsRef.current[activeTab];
-              if (tab && e.target.value) {
-                tab.searchAddon.findNext(e.target.value);
-              }
+              safeSearch(tabsRef.current[activeTab], "findNext", e.target.value);
             }}
             onKeyDown={(e) => {
               const tab = tabsRef.current[activeTab];
               if (!tab) return;
               if (e.key === "Enter") {
                 e.preventDefault();
-                if (e.shiftKey) {
-                  tab.searchAddon.findPrevious(searchQuery);
-                } else {
-                  tab.searchAddon.findNext(searchQuery);
-                }
+                safeSearch(tab, e.shiftKey ? "findPrevious" : "findNext", searchQuery);
               } else if (e.key === "Escape") {
                 setShowSearch(false);
                 setSearchQuery("");
@@ -452,14 +445,8 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
               }
             }}
           />
-          <button onClick={() => {
-            const tab = tabsRef.current[activeTab];
-            if (tab) tab.searchAddon.findPrevious(searchQuery);
-          }}>▲</button>
-          <button onClick={() => {
-            const tab = tabsRef.current[activeTab];
-            if (tab) tab.searchAddon.findNext(searchQuery);
-          }}>▼</button>
+          <button onClick={() => safeSearch(tabsRef.current[activeTab], "findPrevious", searchQuery)}>▲</button>
+          <button onClick={() => safeSearch(tabsRef.current[activeTab], "findNext", searchQuery)}>▼</button>
           <button onClick={() => {
             setShowSearch(false);
             setSearchQuery("");

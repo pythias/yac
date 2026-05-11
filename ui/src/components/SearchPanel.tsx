@@ -62,7 +62,6 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: Props) {
       e.preventDefault();
       if (results[selected]) {
         onOpenFile(results[selected].path, getFileName(results[selected].path));
-        onClose();
       } else {
         doSearch(query);
       }
@@ -72,46 +71,38 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: Props) {
   };
 
   return (
-    <div
-      className="quick-open-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="search-panel">
-        <div className="search-input-wrap">
-          <input
-            ref={inputRef}
-            placeholder="Search files..."
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              doSearch(e.target.value);
+    <div className="search-panel-inline">
+      <div className="search-input-wrap">
+        <input
+          ref={inputRef}
+          placeholder="Search files..."
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            doSearch(e.target.value);
+          }}
+          onKeyDown={handleKeyDown}
+        />
+        {searching && <span className="search-spinner">Searching...</span>}
+      </div>
+      <div className="search-results">
+        {results.map((m, i) => (
+          <div
+            key={`${m.path}:${m.line}`}
+            className={`search-item ${i === selected ? "selected" : ""}`}
+            onClick={() => {
+              onOpenFile(m.path, getFileName(m.path));
             }}
-            onKeyDown={handleKeyDown}
-          />
-          {searching && <span className="search-spinner">Searching...</span>}
-        </div>
-        <div className="search-results">
-          {results.map((m, i) => (
-            <div
-              key={`${m.path}:${m.line}`}
-              className={`search-item ${i === selected ? "selected" : ""}`}
-              onClick={() => {
-                onOpenFile(m.path, getFileName(m.path));
-                onClose();
-              }}
-            >
-              <div className="search-item-path">
-                {getShortPath(m.path)}:{m.line}
-              </div>
-              <div className="search-item-content">{m.content}</div>
+          >
+            <div className="search-item-path">
+              {getShortPath(m.path)}:{m.line}
             </div>
-          ))}
-          {results.length === 0 && query && !searching && (
-            <div className="quick-open-empty">No results found</div>
-          )}
-        </div>
+            <div className="search-item-content">{m.content}</div>
+          </div>
+        ))}
+        {results.length === 0 && query && !searching && (
+          <div className="quick-open-empty">No results found</div>
+        )}
       </div>
     </div>
   );

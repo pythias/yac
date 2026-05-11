@@ -4,7 +4,6 @@ import EditorTabs from "./components/EditorTabs";
 import MonacoEditor from "./components/MonacoEditor";
 import TerminalPanel, { TerminalPanelHandle } from "./components/TerminalPanel";
 import QuickOpen from "./components/QuickOpen";
-import SearchPanel from "./components/SearchPanel";
 import SettingsPanel, { EditorSettings } from "./components/SettingsPanel";
 
 export interface OpenFile {
@@ -99,9 +98,17 @@ export default function App() {
     return { fontSize: 14, tabSize: 4, wordWrap: "off" };
   });
 
-  const handleSaveSettings = useCallback((s: EditorSettings) => {
-    setEditorSettings(s);
-    localStorage.setItem("yac-editor-settings", JSON.stringify(s));
+  const [openInNewWindow, setOpenInNewWindow] = useState(
+    () => localStorage.getItem("yac-open-new-window") === "true"
+  );
+
+  const handleSaveSettings = useCallback((editor: EditorSettings, newTheme: string, newWindow: boolean) => {
+    setEditorSettings(editor);
+    setTheme(newTheme);
+    setOpenInNewWindow(newWindow);
+    localStorage.setItem("yac-editor-settings", JSON.stringify(editor));
+    localStorage.setItem("yac-theme", newTheme);
+    localStorage.setItem("yac-open-new-window", String(newWindow));
   }, []);
 
   useEffect(() => {
@@ -330,57 +337,35 @@ export default function App() {
         e.preventDefault();
         setShowSettings((v) => !v);
       }
+      if (mod && e.key === "w") {
+        e.preventDefault();
+        if (openFiles.length === 0) {
+          if (window.confirm("Close window?")) {
+            (async () => {
+              const { getCurrentWindow } = await import("@tauri-apps/api/window");
+              getCurrentWindow().close();
+            })();
+          }
+        } else if (activeFile) {
+          closeFile(activeFile);
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  const handleNewWindow = async () => {
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    const label = `win_${Date.now()}`;
-    new WebviewWindow(label, {
-      title: "Yac IDE",
-      width: 1200,
-      height: 800,
-      url: "index.html"
-    });
-  };
+  }, [closeFile, activeFile, openFiles]);
 
   return (
     <div className="app">
       <div className="titlebar">
         <span>Yac IDE{rootPath ? ` — ${rootPath}` : ""}</span>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
-          <button 
-            onClick={handleNewWindow}
-            title="New Window"
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "none",
-              color: "#ccc",
-              padding: "4px 8px",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px"
-            }}
-          >
-            <i className="fa-solid fa-plus"></i>
-            New Window
-          </button>
-          <select
-            className="theme-selector"
-            value={theme}
-            onChange={(e) => setTheme(e.target.value)}
-          >
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="monokai">Monokai</option>
-            <option value="solarized-dark">Solarized Dark</option>
-          </select>
-        </div>
+        <button
+          className="titlebar-settings-btn"
+          onClick={() => setShowSettings(true)}
+          title="Settings"
+        >
+          <i className="fa-solid fa-gear"></i>
+        </button>
       </div>
       <div className="main-content" ref={mainContentRef}>
         <Sidebar
@@ -390,6 +375,8 @@ export default function App() {
           onOpenTerminal={handleOpenTerminal}
           width={sidebarWidth}
           onWidthChange={setSidebarWidth}
+          showSearch={showSearchPanel}
+          onToggleSearch={() => setShowSearchPanel((v) => !v)}
         />
         <div
           className="editor-area"
@@ -479,15 +466,10 @@ export default function App() {
       {showSettings && (
         <SettingsPanel
           settings={editorSettings}
+          theme={theme}
+          openInNewWindow={openInNewWindow}
           onSave={handleSaveSettings}
           onClose={() => setShowSettings(false)}
-        />
-      )}
-      {showSearchPanel && (
-        <SearchPanel
-          rootPath={rootPath}
-          onOpenFile={openFile}
-          onClose={() => setShowSearchPanel(false)}
         />
       )}
     </div>
