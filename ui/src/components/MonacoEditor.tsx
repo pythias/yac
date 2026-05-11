@@ -5,6 +5,7 @@ import { EditorSettings } from "./SettingsPanel";
 
 interface Props {
   file: OpenFile;
+  rootPath: string | null;
   onChange: (value: string) => void;
   onSave: () => void;
   onReload?: (path: string, content: string) => void;
@@ -39,7 +40,7 @@ function getMonacoTheme(theme: string): string {
   return map[theme] || "vs-dark";
 }
 
-export default function MonacoEditor({ file, onChange, onSave, onReload, settings, theme }: Props) {
+export default function MonacoEditor({ file, rootPath, onChange, onSave, onReload, settings, theme }: Props) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const lastMtimeRef = useRef<number>(0);
@@ -114,10 +115,10 @@ export default function MonacoEditor({ file, onChange, onSave, onReload, setting
       if (!f.path || f.dirty) return;
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        const info = await invoke<{ mtime: number }>("get_file_info", { path: f.path });
+        const info = await invoke<{ mtime: number }>("get_file_info", { path: f.path, workspaceRoot: rootPath });
         if (info.mtime > lastMtimeRef.current) {
           if (window.confirm(`"${f.name}" has been modified externally. Reload?`)) {
-            const content = await invoke<string>("read_file", { path: f.path });
+            const content = await invoke<string>("read_file", { path: f.path, workspaceRoot: rootPath });
             lastMtimeRef.current = info.mtime;
             onReloadRef.current?.(f.path, content);
           } else {
@@ -140,12 +141,12 @@ export default function MonacoEditor({ file, onChange, onSave, onReload, setting
     const checkMtime = async () => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        const info = await invoke<{ mtime: number }>("get_file_info", { path: file.path });
+        const info = await invoke<{ mtime: number }>("get_file_info", { path: file.path, workspaceRoot: rootPath });
         lastMtimeRef.current = info.mtime;
       } catch {}
     };
     checkMtime();
-  }, [file.path]);
+  }, [file.path, rootPath]);
 
   return (
     <Editor

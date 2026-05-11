@@ -11,38 +11,38 @@ struct AppState {
 // === File System Commands ===
 
 #[tauri::command]
-fn read_dir(path: String) -> Result<Vec<fs_commands::FileEntry>, String> {
-    fs_commands::read_dir_shallow(&path)
+fn read_dir(path: String, workspace_root: Option<String>) -> Result<Vec<fs_commands::FileEntry>, String> {
+    fs_commands::read_dir_shallow(&path, workspace_root.as_deref())
 }
 
 #[tauri::command]
-fn read_file(path: String) -> Result<String, String> {
-    fs_commands::read_file(&path)
+fn read_file(path: String, workspace_root: Option<String>) -> Result<String, String> {
+    fs_commands::read_file(&path, workspace_root.as_deref())
 }
 
 #[tauri::command]
-fn write_file(path: String, content: String) -> Result<(), String> {
-    fs_commands::write_file(&path, &content)
+fn write_file(path: String, content: String, workspace_root: Option<String>) -> Result<(), String> {
+    fs_commands::write_file(&path, &content, workspace_root.as_deref())
 }
 
 #[tauri::command]
-fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
-    fs_commands::rename_path(&old_path, &new_path)
+fn rename_path(old_path: String, new_path: String, workspace_root: Option<String>) -> Result<(), String> {
+    fs_commands::rename_path(&old_path, &new_path, workspace_root.as_deref())
 }
 
 #[tauri::command]
-fn delete_path(path: String) -> Result<(), String> {
-    fs_commands::delete_path(&path)
+fn delete_path(path: String, workspace_root: Option<String>) -> Result<String, String> {
+    fs_commands::delete_path(&path, workspace_root.as_deref())
 }
 
 #[tauri::command]
-fn create_file(path: String) -> Result<(), String> {
-    fs_commands::create_file(&path)
+fn create_file(path: String, workspace_root: Option<String>) -> Result<(), String> {
+    fs_commands::create_file(&path, workspace_root.as_deref())
 }
 
 #[tauri::command]
-fn create_dir(path: String) -> Result<(), String> {
-    fs_commands::create_dir(&path)
+fn create_dir(path: String, workspace_root: Option<String>) -> Result<(), String> {
+    fs_commands::create_dir(&path, workspace_root.as_deref())
 }
 
 #[tauri::command]
@@ -55,8 +55,8 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_file_info(path: String) -> Result<fs_commands::FileInfo, String> {
-    fs_commands::get_file_info(&path)
+fn get_file_info(path: String, workspace_root: Option<String>) -> Result<fs_commands::FileInfo, String> {
+    fs_commands::get_file_info(&path, workspace_root.as_deref())
 }
 
 #[tauri::command]

@@ -27,7 +27,7 @@ export default function QuickOpen({ rootPath, onOpenFile, onClose }: QuickOpenPr
     const walk = async (dir: string) => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        const entries = await invoke<FileEntry[]>("read_dir", { path: dir });
+        const entries = await invoke<FileEntry[]>("read_dir", { path: dir, workspaceRoot: rootPath });
         for (const e of entries) {
           if (e.is_dir) {
             await walk(e.path);

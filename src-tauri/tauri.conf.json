@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/format-conf/main/schemas/tauri.json",
   "productName": "Yac IDE",
-  "version": "0.1.5",
-  "identifier": "com.yac.ide",
+  "version": "0.1.6",
+  "identifier": "dev.yac.ide",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost; font-src 'self'; connect-src ipc: http://ipc.localhost; worker-src 'self' blob:"
     }
   },
   "bundle": {

@@ -23,12 +23,12 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.0.9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.13
           cache: pnpm
           cache-dependency-path: ui/pnpm-lock.yaml
 
@@ -51,8 +51,10 @@ jobs:
           NEW_NAME="Yac.IDE_${VERSION}_aarch64.dmg"
           NEW_PATH="$(dirname "$DMG")/${NEW_NAME}"
           mv "$DMG" "$NEW_PATH"
+          SHA=$(shasum -a 256 "$NEW_PATH" | awk '{print $1}')
           echo "path=$NEW_PATH" >> $GITHUB_OUTPUT
           echo "name=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -61,3 +63,49 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout homebrew-yac tap
+        uses: actions/checkout@v4
+        with:
+          repository: pythias/homebrew-yac
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-yac
+
+      - name: Replace Homebrew Cask
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          SHA="${{ steps.find_dmg.outputs.sha256 }}"
+          cd homebrew-yac
+          mkdir -p Casks
+          cat > Casks/yac.rb <<EOF
+          cask "yac" do
+            version "${VERSION}"
+            sha256 "${SHA}"
+
+            url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_aarch64.dmg"
+
+            name "Yac IDE"
+            desc "A minimal IDE built with Tauri + React"
+            homepage "https://github.com/pythias/yac"
+
+            app "Yac IDE.app"
+
+            # NOTE: Not notarized. On first run: System Settings -> Privacy & Security -> Open Anyway
+          end
+          EOF
+          ruby -c Casks/yac.rb
+          cat Casks/yac.rb
+
+      - name: Commit and push Homebrew Cask
+        run: |
+          cd homebrew-yac
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/yac.rb
+          if git diff --cached --quiet; then
+            echo "Casks/yac.rb already matches this release."
+            exit 0
+          fi
+          git commit -m "chore: update yac to ${{ github.ref_name }}"
+          git push

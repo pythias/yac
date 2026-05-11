@@ -136,7 +136,7 @@ export default function App() {
       const files: OpenFile[] = [];
       for (const f of saved.current.openFiles) {
         try {
-          const content = await invoke<string>("read_file", { path: f.path });
+          const content = await invoke<string>("read_file", { path: f.path, workspaceRoot: initialRootPath });
           files.push({ path: f.path, name: f.name, content, dirty: false });
         } catch {}
       }
@@ -170,7 +170,7 @@ export default function App() {
     }
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      const content = await invoke<string>("read_file", { path });
+      const content = await invoke<string>("read_file", { path, workspaceRoot: rootPath });
       const file: OpenFile = { path, name, content, dirty: false };
       setOpenFiles((prev) => [...prev, file]);
       setActiveFile(path);
@@ -232,7 +232,7 @@ export default function App() {
     if (!file) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("write_file", { path, content: file.content });
+      await invoke("write_file", { path, content: file.content, workspaceRoot: rootPath });
       setOpenFiles((prev) =>
         prev.map((f) => (f.path === path ? { ...f, dirty: false } : f))
       );
@@ -403,6 +403,7 @@ export default function App() {
                 <MonacoEditor
                   key={currentFile.path}
                   file={currentFile}
+                  rootPath={rootPath}
                   onChange={(val) => updateFileContent(currentFile.path, val)}
                   onSave={() => saveFile(currentFile.path)}
                   onReload={reloadFile}

@@ -1,6 +1,11 @@
 name: Update Homebrew Cask
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v, for example 0.1.5"
+        required: true
   release:
     types: [published]
 
@@ -12,7 +17,7 @@ jobs:
       - name: Get release info
         id: release
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ github.event.release.tag_name || format('v{0}', inputs.version) }}"
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
@@ -22,7 +27,7 @@ jobs:
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           URL="https://github.com/pythias/yac/releases/download/v${VERSION}/Yac.IDE_${VERSION}_aarch64.dmg"
-          curl -L -o /tmp/yac.dmg "$URL"
+          curl -fL -o /tmp/yac.dmg "$URL"
           SHA=$(shasum -a 256 /tmp/yac.dmg | awk '{print $1}')
           echo "sha256=$SHA" >> $GITHUB_OUTPUT
 
@@ -38,8 +43,24 @@ jobs:
           VERSION="${{ steps.release.outputs.version }}"
           SHA="${{ steps.sha.outputs.sha256 }}"
           cd homebrew-yac
-          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/yac.rb
-          sed -i '' "s/sha256 \".*\"/sha256 \"${SHA}\"/" Casks/yac.rb
+          mkdir -p Casks
+          cat > Casks/yac.rb <<EOF
+          cask "yac" do
+            version "${VERSION}"
+            sha256 "${SHA}"
+
+            url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_aarch64.dmg"
+
+            name "Yac IDE"
+            desc "A minimal IDE built with Tauri + React"
+            homepage "https://github.com/pythias/yac"
+
+            app "Yac IDE.app"
+
+            # NOTE: Not notarized. On first run: System Settings -> Privacy & Security -> Open Anyway
+          end
+          EOF
+          ruby -c Casks/yac.rb
           cat Casks/yac.rb
 
       - name: Commit and push
@@ -48,5 +69,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/yac.rb
+          if git diff --cached --quiet; then
+            echo "Casks/yac.rb already matches this release."
+            exit 0
+          fi
           git commit -m "chore: update yac to ${{ steps.release.outputs.version }}"
           git push

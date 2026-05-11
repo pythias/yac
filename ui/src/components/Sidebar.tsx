@@ -49,7 +49,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
   const loadDir = async (path: string): Promise<FileEntry[]> => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      return await invoke<FileEntry[]>("read_dir", { path });
+      return await invoke<FileEntry[]>("read_dir", { path, workspaceRoot: rootPath });
     } catch {
       return [];
     }
@@ -142,7 +142,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
           if (!name) return;
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_file", { path: `${parentDir}/${name}` });
+            await invoke("create_file", { path: `${parentDir}/${name}`, workspaceRoot: rootPath });
             refreshDir();
           } catch (e) {
             console.error("Create file failed:", e);
@@ -156,7 +156,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
           if (!name) return;
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_dir", { path: `${parentDir}/${name}` });
+            await invoke("create_dir", { path: `${parentDir}/${name}`, workspaceRoot: rootPath });
             refreshDir();
           } catch (e) {
             console.error("Create folder failed:", e);
@@ -188,7 +188,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
         if (!confirm(`Delete "${entry.name}"?`)) return;
         try {
           const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("delete_path", { path: entry.path });
+          await invoke("delete_path", { path: entry.path, workspaceRoot: rootPath });
           refreshDir();
         } catch (e) {
           console.error("Delete failed:", e);
@@ -206,7 +206,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
     const newPath = `${parentDir}/${newName}`;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("rename_path", { oldPath: entry.path, newPath });
+      await invoke("rename_path", { oldPath: entry.path, newPath, workspaceRoot: rootPath });
       refreshDir();
     } catch (e) {
       console.error("Rename failed:", e);

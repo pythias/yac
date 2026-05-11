@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize, MasterPty};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::thread;
@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter};
 struct PtyInstance {
     writer_tx: Sender<Vec<u8>>,
     master: Box<dyn MasterPty + Send>,
+    child: Box<dyn Child + Send + Sync>,
 }
 
 /// PTY 管理器：管理多个终端实例
@@ -58,7 +59,6 @@ impl PtyManager {
         };
 
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
-        std::mem::forget(child);
         drop(pair.slave);
 
         let (writer_tx, writer_rx) = unbounded::<Vec<u8>>();
@@ -96,7 +96,7 @@ impl PtyManager {
             }
         });
 
-        self.instances.insert(id, PtyInstance { writer_tx, master: pair.master });
+        self.instances.insert(id, PtyInstance { writer_tx, master: pair.master, child });
         Ok(id)
     }
 
@@ -119,6 +119,18 @@ impl PtyManager {
 
     /// 关闭终端
     pub fn close(&mut self, id: u32) {
-        self.instances.remove(&id);
+        if let Some(mut inst) = self.instances.remove(&id) {
+            let _ = inst.child.kill();
+            let _ = inst.child.wait();
+        }
+    }
+}
+
+impl Drop for PtyManager {
+    fn drop(&mut self) {
+        let ids: Vec<u32> = self.instances.keys().copied().collect();
+        for id in ids {
+            self.close(id);
+        }
     }
 }

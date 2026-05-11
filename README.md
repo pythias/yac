@@ -14,7 +14,7 @@ brew install yac
 ### 从源码运行
 
 ```bash
-# 前置依赖：Node.js 22+, pnpm, Rust 1.80+
+# 前置依赖：Node.js 22.13+, pnpm 11+, Rust 1.80+
 
 cd /path/to/yac
 
