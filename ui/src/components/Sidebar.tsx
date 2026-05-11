@@ -65,9 +65,31 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
 
   const handleOpen = async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    
     const selected = await open({ directory: true, multiple: false });
     if (selected) {
-      setRootPath(selected as string);
+      if (!rootPath) {
+        // If current window is empty, just open here
+        setRootPath(selected as string);
+      } else {
+        // Open in a new window
+        const label = `win_${Date.now()}`;
+        const url = `index.html?rootPath=${encodeURIComponent(selected as string)}`;
+        
+        const webview = new WebviewWindow(label, {
+          title: `Yac IDE — ${selected}`,
+          width: 1200,
+          height: 800,
+          url: url
+        });
+        
+        webview.once("tauri://error", (e) => {
+          console.error("Failed to open new window:", e);
+          // Fallback if window creation fails
+          setRootPath(selected as string);
+        });
+      }
     }
   };
 

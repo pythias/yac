@@ -42,10 +42,32 @@ export default function App() {
   }
 
   const saved = useRef(loadState());
-  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
-  const [activeFile, setActiveFile] = useState<string | null>(saved.current.activeFile || null);
+  
+  // Use rootPath from initial data if available (passed from new window spawn)
+  const getInitialPath = () => {
+    // Check URL params first (standard way to pass data to new windows)
+    const params = new URLSearchParams(window.location.search);
+    const paramPath = params.get("rootPath");
+    if (paramPath) return paramPath;
+
+    // Fallback to metadata
+    const windowArgs = (window as any).__TAURI_METADATA__?.__args;
+    if (windowArgs?.rootPath) return windowArgs.rootPath;
+
+    return saved.current.rootPath || null;
+  };
+
+  const initialRootPath = getInitialPath();
+  const isNewWindowWithPath = initialRootPath !== (saved.current.rootPath || null);
+
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>(() => 
+    isNewWindowWithPath ? [] : (saved.current.openFiles || [])
+  );
+  const [activeFile, setActiveFile] = useState<string | null>(() =>
+    isNewWindowWithPath ? null : (saved.current.activeFile || null)
+  );
   const [showTerminal, setShowTerminal] = useState(saved.current.showTerminal !== false);
-  const [rootPath, setRootPath] = useState<string | null>(saved.current.rootPath || null);
+  const [rootPath, setRootPath] = useState<string | null>(initialRootPath);
   const terminalRef = useRef<TerminalPanelHandle>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
@@ -244,20 +266,60 @@ export default function App() {
 
   const currentFile = openFiles.find((f) => f.path === activeFile) || null;
 
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", handleContextMenu);
+    return () => document.removeEventListener("contextmenu", handleContextMenu);
+  }, []);
+
+  const handleNewWindow = async () => {
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    const label = `win_${Date.now()}`;
+    new WebviewWindow(label, {
+      title: "Yac IDE",
+      width: 1200,
+      height: 800,
+      url: "index.html"
+    });
+  };
+
   return (
     <div className="app">
       <div className="titlebar">
         <span>Yac IDE{rootPath ? ` — ${rootPath}` : ""}</span>
-        <select
-          className="theme-selector"
-          value={theme}
-          onChange={(e) => setTheme(e.target.value)}
-        >
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          <option value="monokai">Monokai</option>
-          <option value="solarized-dark">Solarized Dark</option>
-        </select>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
+          <button 
+            onClick={handleNewWindow}
+            title="New Window"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "none",
+              color: "#ccc",
+              padding: "4px 8px",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px"
+            }}
+          >
+            <i className="fa-solid fa-plus"></i>
+            New Window
+          </button>
+          <select
+            className="theme-selector"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="monokai">Monokai</option>
+            <option value="solarized-dark">Solarized Dark</option>
+          </select>
+        </div>
       </div>
       <div className="main-content" ref={mainContentRef}>
         <Sidebar

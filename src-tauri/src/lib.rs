@@ -59,6 +59,12 @@ fn pty_write(state: State<AppState>, id: u32, data: Vec<u8>) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn pty_resize(state: State<AppState>, id: u32, rows: u16, cols: u16) -> Result<(), String> {
+    let mgr = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    mgr.resize(id, rows, cols)
+}
+
+#[tauri::command]
 fn pty_close(state: State<AppState>, id: u32) -> Result<(), String> {
     let mut mgr = state.pty_manager.lock().map_err(|e| e.to_string())?;
     mgr.close(id);
@@ -82,6 +88,7 @@ pub fn run() {
             reveal_in_finder,
             pty_spawn,
             pty_write,
+            pty_resize,
             pty_close,
         ])
         .run(tauri::generate_context!())

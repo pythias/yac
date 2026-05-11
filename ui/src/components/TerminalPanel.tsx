@@ -57,8 +57,27 @@ interface Props {
   theme: string;
 }
 
+const ANSI_COLORS = {
+  black: "#000000",
+  red: "#cd3131",
+  green: "#0dbc79",
+  yellow: "#e5e510",
+  blue: "#2472c8",
+  magenta: "#bc3fbc",
+  cyan: "#11a8cd",
+  white: "#e5e5e5",
+  brightBlack: "#666666",
+  brightRed: "#f14c4c",
+  brightGreen: "#23d18b",
+  brightYellow: "#f5f543",
+  brightBlue: "#3b8eea",
+  brightMagenta: "#d670d6",
+  brightCyan: "#29b8db",
+  brightWhite: "#e5e5e5",
+};
+
 function getXtermTheme(theme: string) {
-  const themes: Record<string, object> = {
+  const baseThemes: Record<string, any> = {
     dark: {
       background: "#1e1e1e",
       foreground: "#d4d4d4",
@@ -84,7 +103,8 @@ function getXtermTheme(theme: string) {
       selectionBackground: "#073642",
     },
   };
-  return themes[theme] || themes["dark"];
+  const base = baseThemes[theme] || baseThemes["dark"];
+  return { ...base, ...ANSI_COLORS };
 }
 
 export interface TerminalPanelHandle {
@@ -142,13 +162,31 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, monospace",
       fontSize: 13,
       cursorBlink: true,
+      scrollback: 10000,
+      allowProposedApi: true,
+      convertEol: true,
     });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
 
-    const cols = 80;
-    const rows = 24;
+    const containerEl = document.createElement("div");
+    containerEl.style.width = "100%";
+    containerEl.style.height = "100%";
+    containerEl.style.display = "block"; // Must be visible to measure
+    containerEl.style.visibility = "hidden"; // But we hide it visually
+
+    if (wrapperRef.current) {
+      wrapperRef.current.appendChild(containerEl);
+    }
+
+    term.open(containerEl);
+    
+    // Measure actual dimensions before spawning PTY to avoid messy initialization
+    const dims = fitAddon.proposeDimensions();
+    const cols = dims?.cols || 80;
+    const rows = dims?.rows || 24;
+
     const ptyId = await invoke<number>("pty_spawn", { rows, cols, cwd: effectiveCwd });
 
     term.onData((data) => {
@@ -156,17 +194,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       invoke("pty_write", { id: ptyId, data: bytes });
     });
 
-    const containerEl = document.createElement("div");
-    containerEl.style.width = "100%";
-    containerEl.style.height = "100%";
+    term.onResize(({ cols, rows }) => {
+      invoke("pty_resize", { id: ptyId, rows, cols });
+    });
+
+    // Reset styles after measurement
+    containerEl.style.visibility = "visible";
     containerEl.style.display = "none";
-
-    if (wrapperRef.current) {
-      wrapperRef.current.appendChild(containerEl);
-    }
-
-    term.open(containerEl);
-    fitAddon.fit();
 
     const title = effectiveCwd ? getDirName(effectiveCwd) : `Terminal ${tabsRef.current.length + 1}`;
 

@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize, MasterPty};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::thread;
@@ -8,6 +8,7 @@ use tauri::{AppHandle, Emitter};
 /// PTY 实例
 struct PtyInstance {
     writer_tx: Sender<Vec<u8>>,
+    master: Box<dyn MasterPty + Send>,
 }
 
 /// PTY 管理器：管理多个终端实例
@@ -39,6 +40,7 @@ impl PtyManager {
         let cmd = if std::path::Path::new("/bin/zsh").exists() {
             let mut cmd = CommandBuilder::new("zsh");
             cmd.env("TERM", "xterm-256color");
+            cmd.env("COLORTERM", "truecolor");
             cmd.env("LANG", "en_US.UTF-8");
             if let Some(ref dir) = cwd {
                 cmd.cwd(dir);
@@ -47,6 +49,7 @@ impl PtyManager {
         } else {
             let mut cmd = CommandBuilder::new("bash");
             cmd.env("TERM", "xterm-256color");
+            cmd.env("COLORTERM", "truecolor");
             cmd.env("LANG", "en_US.UTF-8");
             if let Some(ref dir) = cwd {
                 cmd.cwd(dir);
@@ -93,7 +96,7 @@ impl PtyManager {
             }
         });
 
-        self.instances.insert(id, PtyInstance { writer_tx });
+        self.instances.insert(id, PtyInstance { writer_tx, master: pair.master });
         Ok(id)
     }
 
@@ -101,6 +104,17 @@ impl PtyManager {
     pub fn write(&self, id: u32, data: &[u8]) -> Result<(), String> {
         let inst = self.instances.get(&id).ok_or("Terminal not found")?;
         inst.writer_tx.send(data.to_vec()).map_err(|e| e.to_string())
+    }
+
+    /// 调整终端大小
+    pub fn resize(&self, id: u32, rows: u16, cols: u16) -> Result<(), String> {
+        let inst = self.instances.get(&id).ok_or("Terminal not found")?;
+        inst.master.resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        }).map_err(|e| e.to_string())
     }
 
     /// 关闭终端

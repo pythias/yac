@@ -42,12 +42,17 @@ jobs:
       - name: Build Tauri app
         run: cargo tauri build --target aarch64-apple-darwin
 
-      - name: Find DMG
+      - name: Find and rename DMG
         id: find_dmg
         run: |
           DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
-          echo "path=$DMG" >> $GITHUB_OUTPUT
-          echo "name=$(basename $DMG)" >> $GITHUB_OUTPUT
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          NEW_NAME="Yac.IDE_${VERSION}_aarch64.dmg"
+          NEW_PATH="$(dirname "$DMG")/${NEW_NAME}"
+          mv "$DMG" "$NEW_PATH"
+          echo "path=$NEW_PATH" >> $GITHUB_OUTPUT
+          echo "name=$NEW_NAME" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
