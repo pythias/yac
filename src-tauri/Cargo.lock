@@ -4836,7 +4836,7 @@ dependencies = [
 
 [[package]]
 name = "yac"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "crossbeam-channel",
  "portable-pty",
