@@ -364,17 +364,71 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeFile, activeFile, openFiles]);
 
+  // Listen for menu events from Rust
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    const setupMenuListener = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<string>("menu-event", (event) => {
+        switch (event.payload) {
+          case "open-settings":
+            setShowSettings(true);
+            break;
+          case "toggle-sidebar":
+            // We need access to state here, so it's already in the App component
+            // We'll handle sidebar toggle if we have a way to track it
+            break;
+          case "toggle-terminal":
+            setShowTerminal((v) => !v);
+            break;
+        }
+      });
+    };
+    setupMenuListener();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // Intercept window close to show confirmation
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const setupCloseInterceptor = async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const { ask } = await import("@tauri-apps/plugin-dialog");
+      const appWindow = getCurrentWindow();
+
+      unlisten = await appWindow.onCloseRequested(async (event) => {
+        const dirtyFiles = openFiles.filter(f => f.dirty);
+        
+        let message = "Are you sure you want to exit?";
+        if (dirtyFiles.length > 0) {
+          const names = dirtyFiles.map(f => f.name).join(", ");
+          message = `You have unsaved changes in: ${names}.\n\nDo you want to discard them and exit?`;
+        }
+
+        const confirmed = await ask(message, {
+          title: "Confirm Exit",
+          kind: "warning",
+        });
+
+        if (!confirmed) {
+          event.preventDefault();
+        }
+      });
+    };
+
+    setupCloseInterceptor();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openFiles]);
+
   return (
     <div className="app">
       <div className="titlebar">
         <span>Yac IDE{rootPath ? ` — ${rootPath}` : ""}</span>
-        <button
-          className="titlebar-settings-btn"
-          onClick={() => setShowSettings(true)}
-          title="Settings"
-        >
-          <i className="fa-solid fa-gear"></i>
-        </button>
       </div>
       <div className="main-content" ref={mainContentRef}>
         {rootPath ? (

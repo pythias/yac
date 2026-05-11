@@ -2,7 +2,10 @@ mod fs_commands;
 mod pty;
 
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{
+    menu::{Menu, MenuItem, Submenu},
+    Manager, State,
+};
 
 struct AppState {
     pty_manager: Mutex<pty::PtyManager>,
@@ -116,18 +119,97 @@ pub fn run() {
             pty_close,
         ])
         .setup(|app| {
-            let handle = app.handle().clone();
-            app.on_window_event(move |window, event| {
-                if let tauri::WindowEvent::Destroyed = event {
-                    let label = window.label();
-                    let state: State<AppState> = handle.state();
-                    if let Ok(mut mgr) = state.pty_manager.lock() {
-                        mgr.close_all_for_window(label);
-                        println!("Cleaned up PTYs for window: {}", label);
+            let handle = app.handle();
+
+            // --- Menu Bar Implementation ---
+            let settings_i = MenuItem::with_id(handle, "settings", "Settings...", true, Some(","), )?;
+            let app_menu = Submenu::with_items(
+                handle,
+                "Yac IDE",
+                true,
+                &[
+                    &MenuItem::about(handle, None, None)?,
+                    &settings_i,
+                    &MenuItem::separator(handle)?,
+                    &MenuItem::services(handle)?,
+                    &MenuItem::separator(handle)?,
+                    &MenuItem::hide(handle, None)?,
+                    &MenuItem::hide_others(handle)?,
+                    &MenuItem::show_all(handle)?,
+                    &MenuItem::separator(handle)?,
+                    &MenuItem::quit(handle, None)?,
+                ],
+            )?;
+
+            let edit_menu = Submenu::with_items(
+                handle,
+                "Edit",
+                true,
+                &[
+                    &MenuItem::undo(handle, None)?,
+                    &MenuItem::redo(handle, None)?,
+                    &MenuItem::separator(handle)?,
+                    &MenuItem::cut(handle, None)?,
+                    &MenuItem::copy(handle, None)?,
+                    &MenuItem::paste(handle, None)?,
+                    &MenuItem::select_all(handle, None)?,
+                ],
+            )?;
+
+            let view_menu = Submenu::with_items(
+                handle,
+                "View",
+                true,
+                &[
+                    &MenuItem::with_id(handle, "toggle_sidebar", "Toggle Sidebar", true, Some("b"))?,
+                    &MenuItem::with_id(handle, "toggle_terminal", "Toggle Terminal", true, Some("j"))?,
+                    &MenuItem::separator(handle)?,
+                    &MenuItem::enter_full_screen(handle, None)?,
+                ],
+            )?;
+
+            let window_menu = Submenu::with_items(
+                handle,
+                "Window",
+                true,
+                &[
+                    &MenuItem::minimize(handle, None)?,
+                    &MenuItem::zoom(handle, None)?,
+                    &MenuItem::separator(handle)?,
+                    &MenuItem::close_window(handle, None)?,
+                ],
+            )?;
+
+            let menu = Menu::with_items(handle, &[&app_menu, &edit_menu, &view_menu, &window_menu])?;
+            app.set_menu(menu)?;
+
+            app.on_menu_event(move |handle, event| {
+                match event.id().as_ref() {
+                    "settings" => {
+                        let _ = handle.emit("menu-event", "open-settings");
                     }
+                    "toggle_sidebar" => {
+                        let _ = handle.emit("menu-event", "toggle-sidebar");
+                    }
+                    "toggle_terminal" => {
+                        let _ = handle.emit("menu-event", "toggle-terminal");
+                    }
+                    _ => {}
                 }
             });
+
             Ok(())
+        })
+        .on_window_event(move |window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let label = window.label();
+                let handle = window.app_handle();
+                let state: State<AppState> = handle.state();
+                if let Ok(mut mgr) = state.pty_manager.lock() {
+                    mgr.close_all_for_window(label);
+                    println!("Cleaned up PTYs for window: {}", label);
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
