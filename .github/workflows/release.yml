@@ -18,7 +18,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -54,7 +54,7 @@ jobs:
           rm certificate.p12
 
       - name: Build Tauri app
-        run: cargo tauri build --target aarch64-apple-darwin
+        run: cargo tauri build --target universal-apple-darwin
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -63,17 +63,17 @@ jobs:
       - name: Find and rename DMG
         id: find_dmg
         run: |
-          DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
           
           # Versioned file
-          NEW_NAME="Yac.IDE_${VERSION}_aarch64.dmg"
+          NEW_NAME="Yac.IDE_${VERSION}_universal.dmg"
           NEW_PATH="$(dirname "$DMG")/${NEW_NAME}"
           cp "$DMG" "$NEW_PATH"
           
           # Latest pointer file
-          LATEST_NAME="Yac.IDE_latest_aarch64.dmg"
+          LATEST_NAME="Yac.IDE_latest_universal.dmg"
           LATEST_PATH="$(dirname "$DMG")/${LATEST_NAME}"
           cp "$DMG" "$LATEST_PATH"
           
@@ -106,7 +106,7 @@ jobs:
             version :latest
             sha256 :no_check
 
-            url "https://github.com/pythias/yac/releases/latest/download/Yac.IDE_latest_aarch64.dmg"
+            url "https://github.com/pythias/yac/releases/latest/download/Yac.IDE_latest_universal.dmg"
 
             name "Yac IDE"
             desc "A minimal IDE built with Tauri + React"

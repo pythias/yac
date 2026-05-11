@@ -91,7 +91,7 @@ fn pty_close(state: State<AppState>, id: u32) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg_attr(mobile, tauri_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -115,6 +115,11 @@ pub fn run() {
             pty_resize,
             pty_close,
         ])
+        .setup(|app| {
+            // macOS Vibrancy is already configured in tauri.conf.json
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
