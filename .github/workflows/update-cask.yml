@@ -56,8 +56,6 @@ jobs:
             homepage "https://github.com/pythias/yac"
 
             app "Yac IDE.app"
-
-            # NOTE: Not notarized. On first run: System Settings -> Privacy & Security -> Open Anyway
           end
           EOF
           ruby -c Casks/yac.rb
