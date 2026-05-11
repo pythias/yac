@@ -10,6 +10,7 @@ struct PtyInstance {
     writer_tx: Sender<Vec<u8>>,
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
+    window_label: String,
 }
 
 /// PTY 管理器：管理多个终端实例
@@ -27,7 +28,7 @@ impl PtyManager {
     }
 
     /// 创建新终端，返回 id
-    pub fn spawn(&mut self, rows: u16, cols: u16, cwd: Option<String>, app: AppHandle) -> Result<u32, String> {
+    pub fn spawn(&mut self, rows: u16, cols: u16, cwd: Option<String>, app: AppHandle, window_label: String) -> Result<u32, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -69,6 +70,9 @@ impl PtyManager {
         // 读线程：PTY → Tauri event
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let event_id = id;
+        let label_clone = window_label.clone();
+        let app_clone = app.clone();
+        
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
@@ -76,7 +80,8 @@ impl PtyManager {
                     Ok(0) => break,
                     Ok(n) => {
                         let data: Vec<u8> = buf[..n].to_vec();
-                        let _ = app.emit("pty-output", serde_json::json!({
+                        // Only emit to the specific window that owns this PTY
+                        let _ = app_clone.emit_to(&label_clone, "pty-output", serde_json::json!({
                             "ptyId": event_id,
                             "data": data,
                         }));
@@ -96,7 +101,12 @@ impl PtyManager {
             }
         });
 
-        self.instances.insert(id, PtyInstance { writer_tx, master: pair.master, child });
+        self.instances.insert(id, PtyInstance { 
+            writer_tx, 
+            master: pair.master, 
+            child,
+            window_label,
+        });
         Ok(id)
     }
 
@@ -122,6 +132,19 @@ impl PtyManager {
         if let Some(mut inst) = self.instances.remove(&id) {
             let _ = inst.child.kill();
             let _ = inst.child.wait();
+        }
+    }
+
+    /// 清理特定窗口的所有终端
+    pub fn close_all_for_window(&mut self, window_label: &str) {
+        let ids_to_remove: Vec<u32> = self.instances
+            .iter()
+            .filter(|(_, inst)| inst.window_label == window_label)
+            .map(|(id, _)| *id)
+            .collect();
+        
+        for id in ids_to_remove {
+            self.close(id);
         }
     }
 }

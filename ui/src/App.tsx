@@ -20,11 +20,20 @@ interface SavedState {
   showTerminal: boolean;
 }
 
-const STATE_KEY = "yac-ide-state";
+const BASE_STATE_KEY = "yac-ide-state";
+
+function getWinLabel(): string {
+  // @ts-ignore
+  return window.__TAURI_INTERNALS__?.metadata?.label || "main";
+}
+
+function getStateKey(): string {
+  return `${BASE_STATE_KEY}-${getWinLabel()}`;
+}
 
 function loadState(): Partial<SavedState> {
   try {
-    const raw = localStorage.getItem(STATE_KEY);
+    const raw = localStorage.getItem(getStateKey());
     if (raw) return JSON.parse(raw);
   } catch {}
   return {};
@@ -32,7 +41,7 @@ function loadState(): Partial<SavedState> {
 
 function saveState(state: SavedState) {
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    localStorage.setItem(getStateKey(), JSON.stringify(state));
   } catch {}
 }
 
@@ -368,94 +377,129 @@ export default function App() {
         </button>
       </div>
       <div className="main-content" ref={mainContentRef}>
-        <Sidebar
-          rootPath={rootPath}
-          setRootPath={setRootPath}
-          onOpenFile={openFile}
-          onOpenTerminal={handleOpenTerminal}
-          width={sidebarWidth}
-          onWidthChange={setSidebarWidth}
-          showSearch={showSearchPanel}
-          onToggleSearch={() => setShowSearchPanel((v) => !v)}
-        />
-        <div
-          className="editor-area"
-          style={{ flexDirection: terminalPosition === "right" ? "row" : "column" }}
-        >
-          <div
-            className={terminalPosition === "right" ? "editor-main" : undefined}
-            style={
-              terminalPosition === "bottom"
-                ? { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }
-                : { position: "relative" }
-            }
-          >
-            <EditorTabs
-              files={openFiles}
-              activeFile={activeFile}
-              onSelect={setActiveFile}
-              onClose={closeFile}
-              onCloseOthers={closeOthers}
-              onCloseRight={closeRight}
+        {rootPath ? (
+          <>
+            <Sidebar
+              rootPath={rootPath}
+              setRootPath={setRootPath}
+              onOpenFile={openFile}
+              onOpenTerminal={handleOpenTerminal}
+              width={sidebarWidth}
+              onWidthChange={setSidebarWidth}
+              showSearch={showSearchPanel}
+              onToggleSearch={() => setShowSearchPanel((v) => !v)}
             />
-            <div className="editor-container">
-              {currentFile && (
-                <MonacoEditor
-                  key={currentFile.path}
-                  file={currentFile}
-                  rootPath={rootPath}
-                  onChange={(val) => updateFileContent(currentFile.path, val)}
-                  onSave={() => saveFile(currentFile.path)}
-                  onReload={reloadFile}
-                  settings={editorSettings}
-                  theme={theme}
+            <div
+              className="editor-area"
+              style={{ flexDirection: terminalPosition === "right" ? "row" : "column" }}
+            >
+              <div
+                className={terminalPosition === "right" ? "editor-main" : undefined}
+                style={
+                  terminalPosition === "bottom"
+                    ? { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }
+                    : { position: "relative" }
+                }
+              >
+                <EditorTabs
+                  files={openFiles}
+                  activeFile={activeFile}
+                  onSelect={setActiveFile}
+                  onClose={closeFile}
+                  onCloseOthers={closeOthers}
+                  onCloseRight={closeRight}
                 />
-              )}
-              {!currentFile && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#666" }}>
-                  Open a file from the sidebar
+                <div className="editor-container">
+                  {currentFile && (
+                    <MonacoEditor
+                      key={currentFile.path}
+                      file={currentFile}
+                      rootPath={rootPath}
+                      onChange={(val) => updateFileContent(currentFile.path, val)}
+                      onSave={() => saveFile(currentFile.path)}
+                      onReload={reloadFile}
+                      settings={editorSettings}
+                      theme={theme}
+                    />
+                  )}
+                  {!currentFile && (
+                    <div className="empty-state">
+                      <i className="fa-regular fa-file-code"></i>
+                      <p>Select a file to start editing</p>
+                      <div className="shortcuts-hint">
+                        <div><span>⌘ P</span> Quick Open</div>
+                        <div><span>⌘ ⇧ F</span> Search in Files</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {terminalPosition === "right" && showTerminal && (
+                  <div
+                    className="terminal-drag-handle-v"
+                    style={{ position: "absolute", right: 0, top: 0, height: "100%", zIndex: 10, width: 4 }}
+                    onMouseDown={handleEditorRightDragStart}
+                  />
+                )}
+              </div>
+
+              {showTerminal && (
+                <div
+                  className={`terminal-container${terminalPosition === "right" ? " right" : ""}`}
+                  style={
+                    terminalPosition === "bottom"
+                      ? { height: terminalSize }
+                      : { width: terminalSize }
+                  }
+                >
+                  {terminalPosition === "bottom" ? (
+                    <div
+                      className="terminal-drag-handle-h"
+                      onMouseDown={handleTerminalDragStart}
+                    />
+                  ) : (
+                    <div
+                      className="terminal-drag-handle-v"
+                      onMouseDown={handleTerminalDragStart}
+                    />
+                  )}
+                  <TerminalPanel
+                    ref={terminalRef}
+                    cwd={rootPath}
+                    position={terminalPosition}
+                    onTogglePosition={handleToggleTerminalPosition}
+                    theme={theme}
+                  />
                 </div>
               )}
             </div>
-            {terminalPosition === "right" && showTerminal && (
-              <div
-                className="terminal-drag-handle-v"
-                style={{ position: "absolute", right: 0, top: 0, height: "100%", zIndex: 10, width: 4 }}
-                onMouseDown={handleEditorRightDragStart}
-              />
-            )}
-          </div>
-
-          {showTerminal && (
-            <div
-              className={`terminal-container${terminalPosition === "right" ? " right" : ""}`}
-              style={
-                terminalPosition === "bottom"
-                  ? { height: terminalSize }
-                  : { width: terminalSize }
-              }
-            >
-              {terminalPosition === "bottom" ? (
-                <div
-                  className="terminal-drag-handle-h"
-                  onMouseDown={handleTerminalDragStart}
-                />
-              ) : (
-                <div
-                  className="terminal-drag-handle-v"
-                  onMouseDown={handleTerminalDragStart}
-                />
-              )}
-              <TerminalPanel
-                ref={terminalRef}
-                cwd={rootPath}
-                position={terminalPosition}
-                onTogglePosition={handleToggleTerminalPosition}
-                theme={theme}
-              />
+          </>
+        ) : (
+          <div className="welcome-screen">
+            <div className="welcome-content">
+              <h1>Yac IDE</h1>
+              <p>A minimal, high-performance code editor</p>
+              <div className="welcome-actions">
+                <button className="primary-btn" onClick={async () => {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const selected = await open({ directory: true, multiple: false });
+                  if (selected) setRootPath(selected as string);
+                }}>
+                  <i className="fa-regular fa-folder-open"></i> Open Folder
+                </button>
+              </div>
+              <div className="welcome-shortcuts">
+                <div className="shortcut-item">
+                  <span className="label">Quick Open</span>
+                  <span className="key">⌘ P</span>
+                </div>
+                <div className="shortcut-item">
+                  <span className="label">Settings</span>
+                  <span className="key">⌘ ,</span>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       {showQuickOpen && (
         <QuickOpen

@@ -67,9 +67,9 @@ fn grep_files(root: String, pattern: String, max_results: usize) -> Result<Vec<f
 // === PTY Commands ===
 
 #[tauri::command]
-fn pty_spawn(state: State<AppState>, rows: u16, cols: u16, cwd: Option<String>, app: tauri::AppHandle) -> Result<u32, String> {
+fn pty_spawn(state: State<AppState>, rows: u16, cols: u16, cwd: Option<String>, app: tauri::AppHandle, window: tauri::Window) -> Result<u32, String> {
     let mut mgr = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    mgr.spawn(rows, cols, cwd, app)
+    mgr.spawn(rows, cols, cwd, app, window.label().to_string())
 }
 
 #[tauri::command]
@@ -116,7 +116,17 @@ pub fn run() {
             pty_close,
         ])
         .setup(|app| {
-            // macOS Vibrancy is already configured in tauri.conf.json
+            let handle = app.handle().clone();
+            app.on_window_event(move |window, event| {
+                if let tauri::WindowEvent::Destroyed = event {
+                    let label = window.label();
+                    let state: State<AppState> = handle.state();
+                    if let Ok(mut mgr) = state.pty_manager.lock() {
+                        mgr.close_all_for_window(label);
+                        println!("Cleaned up PTYs for window: {}", label);
+                    }
+                }
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
