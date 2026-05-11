@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/format-conf/main/schemas/tauri.json",
   "productName": "Yac IDE",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "identifier": "com.yac.ide",
   "build": {
     "frontendDist": "../ui/dist",

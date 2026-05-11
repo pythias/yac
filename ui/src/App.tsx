@@ -60,8 +60,8 @@ export default function App() {
   const initialRootPath = getInitialPath();
   const isNewWindowWithPath = initialRootPath !== (saved.current.rootPath || null);
 
-  const [openFiles, setOpenFiles] = useState<OpenFile[]>(() => 
-    isNewWindowWithPath ? [] : (saved.current.openFiles || [])
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>(() =>
+    isNewWindowWithPath ? [] : ((saved.current.openFiles || []) as OpenFile[])
   );
   const [activeFile, setActiveFile] = useState<string | null>(() =>
     isNewWindowWithPath ? null : (saved.current.activeFile || null)
