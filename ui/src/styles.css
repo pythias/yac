@@ -396,6 +396,43 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* ── Terminal Search Bar ────────────────────────── */
+.terminal-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.terminal-search-bar input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.terminal-search-bar button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+.terminal-search-bar button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .terminal-drag-handle-v:hover,
 .terminal-drag-handle-v.dragging {
   background: var(--accent-color);
@@ -433,4 +470,195 @@ html, body, #root {
 .theme-selector:focus {
   outline: none;
   border-color: var(--accent-color);
+}
+
+/* ── Quick Open ─────────────────────────────────── */
+.quick-open-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+}
+
+.quick-open-panel {
+  width: 500px;
+  max-height: 400px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+
+.quick-open-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.quick-open-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.quick-open-results {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.quick-open-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.quick-open-item.selected {
+  background: var(--bg-active);
+}
+
+.quick-open-empty {
+  padding: 16px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 13px;
+}
+
+/* ── Settings Panel ────────────────────────────── */
+.settings-panel {
+  width: 360px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+
+.settings-header {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-panel label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.settings-panel select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.settings-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.settings-actions button.primary {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
+}
+
+/* ── Search Panel ───────────────────────────────── */
+.search-panel {
+  width: 600px;
+  max-height: 500px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+
+.search-input-wrap {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.search-input-wrap input {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.search-spinner {
+  padding: 0 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.search-results {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.search-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.search-item.selected {
+  background: var(--bg-active);
+}
+
+.search-item-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.search-item-content {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

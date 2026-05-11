@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import ContextMenu from "./ContextMenu";
@@ -10,6 +12,7 @@ interface TermTab {
   ptyId: number;
   terminal: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   containerEl: HTMLDivElement;
   title: string;
   color?: string;
@@ -133,6 +136,9 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     targetIndex: number;
     submenu: "color" | "icon" | null;
   } | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const tabsRef = useRef<TermTab[]>([]);
 
   tabsRef.current = tabs;
@@ -169,6 +175,17 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+
+    const searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+
+    // Try WebGL renderer for better performance, fall back to canvas
+    try {
+      const webglAddon = new WebglAddon();
+      term.loadAddon(webglAddon);
+    } catch {
+      // WebGL not available, canvas renderer is fine
+    }
 
     const containerEl = document.createElement("div");
     containerEl.style.width = "100%";
@@ -209,6 +226,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       ptyId,
       terminal: term,
       fitAddon,
+      searchAddon,
       containerEl,
       title,
     };
@@ -388,6 +406,15 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
         ))}
         <button onClick={() => createTerminal()}>+</button>
         <button
+          title="Search (Cmd+F)"
+          onClick={() => {
+            setShowSearch((v) => !v);
+            setTimeout(() => searchInputRef.current?.focus(), 0);
+          }}
+        >
+          🔍
+        </button>
+        <button
           title={position === "bottom" ? "移到右侧" : "移到底部"}
           onClick={onTogglePosition}
           style={{ marginLeft: "auto" }}
@@ -395,6 +422,50 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
           {position === "bottom" ? "⊡" : "⊟"}
         </button>
       </div>
+      {showSearch && (
+        <div className="terminal-search-bar">
+          <input
+            ref={searchInputRef}
+            placeholder="Find..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              const tab = tabsRef.current[activeTab];
+              if (tab && e.target.value) {
+                tab.searchAddon.findNext(e.target.value);
+              }
+            }}
+            onKeyDown={(e) => {
+              const tab = tabsRef.current[activeTab];
+              if (!tab) return;
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) {
+                  tab.searchAddon.findPrevious(searchQuery);
+                } else {
+                  tab.searchAddon.findNext(searchQuery);
+                }
+              } else if (e.key === "Escape") {
+                setShowSearch(false);
+                setSearchQuery("");
+                tab.terminal.focus();
+              }
+            }}
+          />
+          <button onClick={() => {
+            const tab = tabsRef.current[activeTab];
+            if (tab) tab.searchAddon.findPrevious(searchQuery);
+          }}>▲</button>
+          <button onClick={() => {
+            const tab = tabsRef.current[activeTab];
+            if (tab) tab.searchAddon.findNext(searchQuery);
+          }}>▼</button>
+          <button onClick={() => {
+            setShowSearch(false);
+            setSearchQuery("");
+          }}>✕</button>
+        </div>
+      )}
       <div className="terminal-body" ref={wrapperRef} />
       {contextMenu && contextMenu.submenu === null && (
         <ContextMenu

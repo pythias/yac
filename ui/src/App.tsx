@@ -3,6 +3,9 @@ import Sidebar from "./components/Sidebar";
 import EditorTabs from "./components/EditorTabs";
 import MonacoEditor from "./components/MonacoEditor";
 import TerminalPanel, { TerminalPanelHandle } from "./components/TerminalPanel";
+import QuickOpen from "./components/QuickOpen";
+import SearchPanel from "./components/SearchPanel";
+import SettingsPanel, { EditorSettings } from "./components/SettingsPanel";
 
 export interface OpenFile {
   path: string;
@@ -84,6 +87,22 @@ export default function App() {
   const [theme, setTheme] = useState<string>(
     () => localStorage.getItem("yac-theme") || "dark"
   );
+  const [showQuickOpen, setShowQuickOpen] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [editorSettings, setEditorSettings] = useState<EditorSettings>(() => {
+    try {
+      const raw = localStorage.getItem("yac-editor-settings");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { fontSize: 14, tabSize: 4, wordWrap: "off" };
+  });
+
+  const handleSaveSettings = useCallback((s: EditorSettings) => {
+    setEditorSettings(s);
+    localStorage.setItem("yac-editor-settings", JSON.stringify(s));
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -153,8 +172,17 @@ export default function App() {
     }
   }, [openFiles]);
 
+  const confirmDiscard = (files: OpenFile[]) => {
+    const dirty = files.filter((f) => f.dirty);
+    if (dirty.length === 0) return true;
+    const names = dirty.map((f) => f.name).join(", ");
+    return window.confirm(`Save changes before closing?\n\n${names}`);
+  };
+
   const closeFile = useCallback((path: string) => {
     setOpenFiles((prev) => {
+      const file = prev.find((f) => f.path === path);
+      if (file?.dirty && !confirmDiscard([file])) return prev;
       const remaining = prev.filter((f) => f.path !== path);
       if (activeFile === path) {
         setActiveFile(remaining.length > 0 ? remaining[remaining.length - 1].path : null);
@@ -164,7 +192,11 @@ export default function App() {
   }, [activeFile]);
 
   const closeOthers = useCallback((path: string) => {
-    setOpenFiles((prev) => prev.filter((f) => f.path === path));
+    setOpenFiles((prev) => {
+      const others = prev.filter((f) => f.path !== path);
+      if (!confirmDiscard(others)) return prev;
+      return prev.filter((f) => f.path === path);
+    });
     setActiveFile(path);
   }, []);
 
@@ -172,6 +204,8 @@ export default function App() {
     setOpenFiles((prev) => {
       const idx = prev.findIndex((f) => f.path === path);
       if (idx === -1) return prev;
+      const right = prev.slice(idx + 1);
+      if (!confirmDiscard(right)) return prev;
       const next = prev.slice(0, idx + 1);
       setActiveFile((active) =>
         next.find((f) => f.path === active) ? active : path
@@ -206,6 +240,12 @@ export default function App() {
     setTimeout(() => {
       terminalRef.current?.createTerminalWithCwd(cwd);
     }, 0);
+  }, []);
+
+  const reloadFile = useCallback((path: string, content: string) => {
+    setOpenFiles((prev) =>
+      prev.map((f) => (f.path === path ? { ...f, content, dirty: false } : f))
+    );
   }, []);
 
   const handleToggleTerminalPosition = useCallback(() => {
@@ -272,6 +312,27 @@ export default function App() {
     };
     document.addEventListener("contextmenu", handleContextMenu);
     return () => document.removeEventListener("contextmenu", handleContextMenu);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "p" && !e.shiftKey) {
+        e.preventDefault();
+        setShowQuickOpen((v) => !v);
+      }
+      if (mod && e.shiftKey && e.key === "f") {
+        e.preventDefault();
+        setShowSearchPanel((v) => !v);
+      }
+      if (mod && e.key === ",") {
+        e.preventDefault();
+        setShowSettings((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const handleNewWindow = async () => {
@@ -357,6 +418,8 @@ export default function App() {
                   file={currentFile}
                   onChange={(val) => updateFileContent(currentFile.path, val)}
                   onSave={() => saveFile(currentFile.path)}
+                  onReload={reloadFile}
+                  settings={editorSettings}
                   theme={theme}
                 />
               )}
@@ -406,6 +469,27 @@ export default function App() {
           )}
         </div>
       </div>
+      {showQuickOpen && (
+        <QuickOpen
+          rootPath={rootPath}
+          onOpenFile={openFile}
+          onClose={() => setShowQuickOpen(false)}
+        />
+      )}
+      {showSettings && (
+        <SettingsPanel
+          settings={editorSettings}
+          onSave={handleSaveSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+      {showSearchPanel && (
+        <SearchPanel
+          rootPath={rootPath}
+          onOpenFile={openFile}
+          onClose={() => setShowSearchPanel(false)}
+        />
+      )}
     </div>
   );
 }

@@ -36,12 +36,32 @@ fn delete_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn create_file(path: String) -> Result<(), String> {
+    fs_commands::create_file(&path)
+}
+
+#[tauri::command]
+fn create_dir(path: String) -> Result<(), String> {
+    fs_commands::create_dir(&path)
+}
+
+#[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
     std::process::Command::new("open")
         .args(["-R", &path])
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+fn get_file_info(path: String) -> Result<fs_commands::FileInfo, String> {
+    fs_commands::get_file_info(&path)
+}
+
+#[tauri::command]
+fn grep_files(root: String, pattern: String, max_results: usize) -> Result<Vec<fs_commands::SearchMatch>, String> {
+    fs_commands::grep_files(&root, &pattern, max_results)
 }
 
 // === PTY Commands ===
@@ -85,7 +105,11 @@ pub fn run() {
             write_file,
             rename_path,
             delete_path,
+            create_file,
+            create_dir,
             reveal_in_finder,
+            get_file_info,
+            grep_files,
             pty_spawn,
             pty_write,
             pty_resize,

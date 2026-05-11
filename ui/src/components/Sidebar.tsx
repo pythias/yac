@@ -118,6 +118,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
   const getContextMenuItems = (entry: FileEntry): MenuItem[] => {
     const items: MenuItem[] = [];
     const termCwd = entry.is_dir ? entry.path : entry.path.substring(0, entry.path.lastIndexOf("/"));
+    const parentDir = entry.is_dir ? entry.path : entry.path.substring(0, entry.path.lastIndexOf("/"));
 
     items.push({
       label: "Open in Terminal",
@@ -131,6 +132,38 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
         await invoke("reveal_in_finder", { path: entry.path });
       },
     });
+
+    if (entry.is_dir) {
+      items.push({
+        label: "New File",
+        separator: true,
+        action: async () => {
+          const name = prompt("File name:");
+          if (!name) return;
+          try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("create_file", { path: `${parentDir}/${name}` });
+            refreshDir();
+          } catch (e) {
+            console.error("Create file failed:", e);
+          }
+        },
+      });
+      items.push({
+        label: "New Folder",
+        action: async () => {
+          const name = prompt("Folder name:");
+          if (!name) return;
+          try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("create_dir", { path: `${parentDir}/${name}` });
+            refreshDir();
+          } catch (e) {
+            console.error("Create folder failed:", e);
+          }
+        },
+      });
+    }
 
     items.push({
       label: "Copy Path",

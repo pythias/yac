@@ -1,11 +1,14 @@
 import { useRef, useEffect } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import { OpenFile } from "../App";
+import { EditorSettings } from "./SettingsPanel";
 
 interface Props {
   file: OpenFile;
   onChange: (value: string) => void;
   onSave: () => void;
+  onReload?: (path: string, content: string) => void;
+  settings?: EditorSettings;
   theme: string;
 }
 
@@ -36,9 +39,14 @@ function getMonacoTheme(theme: string): string {
   return map[theme] || "vs-dark";
 }
 
-export default function MonacoEditor({ file, onChange, onSave, theme }: Props) {
+export default function MonacoEditor({ file, onChange, onSave, onReload, settings, theme }: Props) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const lastMtimeRef = useRef<number>(0);
+  const fileRef = useRef(file);
+  const onReloadRef = useRef(onReload);
+  fileRef.current = file;
+  onReloadRef.current = onReload;
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -94,6 +102,30 @@ export default function MonacoEditor({ file, onChange, onSave, theme }: Props) {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onSave();
     });
+
+    // Cmd+G → goto line
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {
+      editor.getAction("editor.action.gotoLine")?.run();
+    });
+
+    // Check for external changes when editor gains focus
+    editor.onDidFocusEditorText(async () => {
+      const f = fileRef.current;
+      if (!f.path || f.dirty) return;
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const info = await invoke<{ mtime: number }>("get_file_info", { path: f.path });
+        if (info.mtime > lastMtimeRef.current) {
+          if (window.confirm(`"${f.name}" has been modified externally. Reload?`)) {
+            const content = await invoke<string>("read_file", { path: f.path });
+            lastMtimeRef.current = info.mtime;
+            onReloadRef.current?.(f.path, content);
+          } else {
+            lastMtimeRef.current = info.mtime;
+          }
+        }
+      } catch {}
+    });
   };
 
   // Sync Monaco theme when IDE theme changes
@@ -102,6 +134,18 @@ export default function MonacoEditor({ file, onChange, onSave, theme }: Props) {
       monacoRef.current.editor.setTheme(getMonacoTheme(theme));
     }
   }, [theme]);
+
+  // Record mtime when file is opened / changed
+  useEffect(() => {
+    const checkMtime = async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const info = await invoke<{ mtime: number }>("get_file_info", { path: file.path });
+        lastMtimeRef.current = info.mtime;
+      } catch {}
+    };
+    checkMtime();
+  }, [file.path]);
 
   return (
     <Editor
@@ -112,13 +156,13 @@ export default function MonacoEditor({ file, onChange, onSave, theme }: Props) {
       onChange={(val) => onChange(val || "")}
       onMount={handleMount}
       options={{
-        fontSize: 14,
+        fontSize: settings?.fontSize ?? 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, monospace",
         minimap: { enabled: true },
-        wordWrap: "off",
+        wordWrap: settings?.wordWrap ?? "off",
         scrollBeyondLastLine: false,
         renderWhitespace: "selection",
-        tabSize: 4,
+        tabSize: settings?.tabSize ?? 4,
         smoothScrolling: true,
         cursorBlinking: "smooth",
         cursorSmoothCaretAnimation: "on",
