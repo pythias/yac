@@ -225,6 +225,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     }
   }, []);
 
+  const clearTerminal = useCallback((tab: TermTab | undefined) => {
+    if (!tab) return;
+    tab.terminal.clear();
+    tab.terminal.scrollToBottom();
+    tab.terminal.focus();
+  }, []);
+
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -283,6 +290,24 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
 
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
+
+    term.attachCustomKeyEventHandler((event) => {
+      const isCmdK =
+        event.type === "keydown" &&
+        event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "k";
+
+      if (isCmdK) {
+        term.clear();
+        term.scrollToBottom();
+        return false;
+      }
+
+      return true;
+    });
 
     // We removed WebglAddon as it can cause flickering in some Tauri/WebView environments
     // The canvas renderer is more stable for general use.
@@ -459,6 +484,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
         <button className="add-term-btn" onClick={() => createTerminal()}>+</button>
         <button
           className="toggle-pos-btn"
+          title="Clear Terminal"
+          onClick={() => clearTerminal(tabs[activeTab])}
+        >
+          <i className="fa-solid fa-broom"></i>
+        </button>
+        <button
+          className="toggle-pos-btn"
           title={position === "bottom" ? "移到右侧" : "移到底部"}
           onClick={onTogglePosition}
           style={{ marginLeft: "auto" }}
@@ -507,6 +539,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
               label: "关闭",
               action: () => {
                 handleCloseTab(contextMenu.targetIndex);
+                setContextMenu(null);
+              },
+            },
+            {
+              label: "清屏",
+              action: () => {
+                clearTerminal(tabsRef.current[contextMenu.targetIndex]);
                 setContextMenu(null);
               },
             },
