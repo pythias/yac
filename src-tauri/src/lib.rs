@@ -3,12 +3,23 @@ mod pty;
 
 use std::sync::Mutex;
 use tauri::{
-    menu::{Menu, MenuItem, Submenu},
-    Manager, State,
+    menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu},
+    Emitter, Manager, State,
 };
 
 struct AppState {
     pty_manager: Mutex<pty::PtyManager>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ViewMenuState {
+    sidebar_visible: bool,
+    terminal_visible: bool,
+    minimap_enabled: bool,
+    word_wrap_enabled: bool,
+    open_in_new_window: bool,
+    theme: String,
 }
 
 // === File System Commands ===
@@ -94,6 +105,44 @@ fn pty_close(state: State<AppState>, id: u32) -> Result<(), String> {
     Ok(())
 }
 
+fn set_check_item(items: Vec<MenuItemKind<tauri::Wry>>, id: &str, checked: bool) {
+    for item in items {
+        match item {
+            MenuItemKind::Check(check_item) if check_item.id() == &id => {
+                let _ = check_item.set_checked(checked);
+            }
+            MenuItemKind::Submenu(submenu) => {
+                if let Ok(items) = submenu.items() {
+                    set_check_item(items, id, checked);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+#[tauri::command]
+fn sync_view_menu_state(app: tauri::AppHandle, state: ViewMenuState) -> Result<(), String> {
+    let menu = app.menu().ok_or("App menu not initialized")?;
+    let items = menu.items().map_err(|e| e.to_string())?;
+
+    set_check_item(items.clone(), "toggle_sidebar", state.sidebar_visible);
+    set_check_item(items.clone(), "toggle_terminal", state.terminal_visible);
+    set_check_item(items.clone(), "toggle_minimap", state.minimap_enabled);
+    set_check_item(items.clone(), "toggle_word_wrap", state.word_wrap_enabled);
+    set_check_item(items.clone(), "toggle_open_new_window", state.open_in_new_window);
+
+    for theme in ["dark", "light", "monokai", "solarized_dark"] {
+        set_check_item(
+            items.clone(),
+            &format!("theme_{theme}"),
+            state.theme.replace('-', "_") == theme,
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -117,27 +166,26 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_close,
+            sync_view_menu_state,
         ])
         .setup(|app| {
             let handle = app.handle();
 
             // --- Menu Bar Implementation ---
-            let settings_i = MenuItem::with_id(handle, "settings", "Settings...", true, Some(","), )?;
             let app_menu = Submenu::with_items(
                 handle,
                 "Yac IDE",
                 true,
                 &[
-                    &MenuItem::about(handle, None, None)?,
-                    &settings_i,
-                    &MenuItem::separator(handle)?,
-                    &MenuItem::services(handle)?,
-                    &MenuItem::separator(handle)?,
-                    &MenuItem::hide(handle, None)?,
-                    &MenuItem::hide_others(handle)?,
-                    &MenuItem::show_all(handle)?,
-                    &MenuItem::separator(handle)?,
-                    &MenuItem::quit(handle, None)?,
+                    &PredefinedMenuItem::about(handle, None, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::services(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::hide(handle, None)?,
+                    &PredefinedMenuItem::hide_others(handle, None)?,
+                    &PredefinedMenuItem::show_all(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::quit(handle, None)?,
                 ],
             )?;
 
@@ -146,13 +194,23 @@ pub fn run() {
                 "Edit",
                 true,
                 &[
-                    &MenuItem::undo(handle, None)?,
-                    &MenuItem::redo(handle, None)?,
-                    &MenuItem::separator(handle)?,
-                    &MenuItem::cut(handle, None)?,
-                    &MenuItem::copy(handle, None)?,
-                    &MenuItem::paste(handle, None)?,
-                    &MenuItem::select_all(handle, None)?,
+                    &PredefinedMenuItem::undo(handle, None)?,
+                    &PredefinedMenuItem::redo(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::cut(handle, None)?,
+                    &PredefinedMenuItem::copy(handle, None)?,
+                    &PredefinedMenuItem::paste(handle, None)?,
+                    &PredefinedMenuItem::select_all(handle, None)?,
+                ],
+            )?;
+
+            let file_menu = Submenu::with_items(
+                handle,
+                "File",
+                true,
+                &[
+                    &MenuItem::with_id(handle, "add_folder_to_workspace", "Add Folder to Workspace...", true, Some("CmdOrCtrl+O"))?,
+                    &MenuItem::with_id(handle, "open_workspace", "Open Workspace...", true, Some("CmdOrCtrl+Shift+O"))?,
                 ],
             )?;
 
@@ -161,10 +219,29 @@ pub fn run() {
                 "View",
                 true,
                 &[
-                    &MenuItem::with_id(handle, "toggle_sidebar", "Toggle Sidebar", true, Some("b"))?,
-                    &MenuItem::with_id(handle, "toggle_terminal", "Toggle Terminal", true, Some("j"))?,
-                    &MenuItem::separator(handle)?,
-                    &MenuItem::enter_full_screen(handle, None)?,
+                    &CheckMenuItem::with_id(handle, "toggle_sidebar", "Sidebar", true, true, Some("CmdOrCtrl+B"))?,
+                    &CheckMenuItem::with_id(handle, "toggle_terminal", "Terminal", true, true, Some("CmdOrCtrl+J"))?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &CheckMenuItem::with_id(handle, "toggle_minimap", "Show Minimap", true, true, None::<&str>)?,
+                    &CheckMenuItem::with_id(handle, "toggle_word_wrap", "Word Wrap", true, false, None::<&str>)?,
+                    &CheckMenuItem::with_id(handle, "toggle_open_new_window", "Open Files/Folders in New Window", true, false, None::<&str>)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &Submenu::with_items(
+                        handle,
+                        "Theme",
+                        true,
+                        &[
+                            &CheckMenuItem::with_id(handle, "theme_dark", "Dark", true, true, None::<&str>)?,
+                            &CheckMenuItem::with_id(handle, "theme_light", "Light", true, false, None::<&str>)?,
+                            &CheckMenuItem::with_id(handle, "theme_monokai", "Monokai", true, false, None::<&str>)?,
+                            &CheckMenuItem::with_id(handle, "theme_solarized_dark", "Solarized Dark", true, false, None::<&str>)?,
+                        ],
+                    )?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &MenuItem::with_id(handle, "increase_font_size", "Increase Font Size", true, Some("CmdOrCtrl+="))?,
+                    &MenuItem::with_id(handle, "decrease_font_size", "Decrease Font Size", true, Some("CmdOrCtrl+-"))?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::fullscreen(handle, None)?,
                 ],
             )?;
 
@@ -173,26 +250,55 @@ pub fn run() {
                 "Window",
                 true,
                 &[
-                    &MenuItem::minimize(handle, None)?,
-                    &MenuItem::zoom(handle, None)?,
-                    &MenuItem::separator(handle)?,
-                    &MenuItem::close_window(handle, None)?,
+                    &PredefinedMenuItem::minimize(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::close_window(handle, None)?,
                 ],
             )?;
 
-            let menu = Menu::with_items(handle, &[&app_menu, &edit_menu, &view_menu, &window_menu])?;
+            let menu = Menu::with_items(handle, &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu])?;
             app.set_menu(menu)?;
 
             app.on_menu_event(move |handle, event| {
                 match event.id().as_ref() {
-                    "settings" => {
-                        let _ = handle.emit("menu-event", "open-settings");
+                    "add_folder_to_workspace" => {
+                        let _ = handle.emit("menu-event", "add-folder-to-workspace");
+                    }
+                    "open_workspace" => {
+                        let _ = handle.emit("menu-event", "open-workspace");
                     }
                     "toggle_sidebar" => {
                         let _ = handle.emit("menu-event", "toggle-sidebar");
                     }
                     "toggle_terminal" => {
                         let _ = handle.emit("menu-event", "toggle-terminal");
+                    }
+                    "toggle_minimap" => {
+                        let _ = handle.emit("menu-event", "toggle-minimap");
+                    }
+                    "toggle_word_wrap" => {
+                        let _ = handle.emit("menu-event", "toggle-word-wrap");
+                    }
+                    "toggle_open_new_window" => {
+                        let _ = handle.emit("menu-event", "toggle-open-new-window");
+                    }
+                    "theme_dark" => {
+                        let _ = handle.emit("menu-event", "theme-dark");
+                    }
+                    "theme_light" => {
+                        let _ = handle.emit("menu-event", "theme-light");
+                    }
+                    "theme_monokai" => {
+                        let _ = handle.emit("menu-event", "theme-monokai");
+                    }
+                    "theme_solarized_dark" => {
+                        let _ = handle.emit("menu-event", "theme-solarized-dark");
+                    }
+                    "increase_font_size" => {
+                        let _ = handle.emit("menu-event", "increase-font-size");
+                    }
+                    "decrease_font_size" => {
+                        let _ = handle.emit("menu-event", "decrease-font-size");
                     }
                     _ => {}
                 }
@@ -204,8 +310,7 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 let label = window.label();
                 let handle = window.app_handle();
-                let state: State<AppState> = handle.state();
-                if let Ok(mut mgr) = state.pty_manager.lock() {
+                if let Ok(mut mgr) = handle.state::<AppState>().pty_manager.lock() {
                     mgr.close_all_for_window(label);
                     println!("Cleaned up PTYs for window: {}", label);
                 }
@@ -214,4 +319,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

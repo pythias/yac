@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import { OpenFile } from "../App";
-import { EditorSettings } from "./SettingsPanel";
+import { EditorSettings } from "../settings";
 
 interface Props {
   file: OpenFile;
@@ -9,6 +9,7 @@ interface Props {
   onChange: (value: string) => void;
   onSave: () => void;
   onReload?: (path: string, content: string) => void;
+  onCursorChange?: (position: { line: number; column: number }) => void;
   settings?: EditorSettings;
   theme: string;
 }
@@ -32,17 +33,20 @@ function getLanguage(filename: string): string {
 
 function getMonacoTheme(theme: string): string {
   const map: Record<string, string> = {
-    dark: "vs-dark",
-    light: "vs",
-    monokai: "monokai",
-    "solarized-dark": "solarized-dark",
+    dark: "yac-dark",
+    light: "yac-light",
+    monokai: "yac-monokai",
+    "solarized-dark": "yac-solarized-dark",
   };
-  return map[theme] || "vs-dark";
+  return map[theme] || "yac-dark";
 }
 
-export default function MonacoEditor({ file, rootPath, onChange, onSave, onReload, settings, theme }: Props) {
+export default function MonacoEditor({ file, rootPath, onChange, onSave, onReload, onCursorChange, settings, theme }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const layoutFrameRef = useRef<number | null>(null);
+  const lastLayoutSizeRef = useRef({ width: 0, height: 0 });
   const lastMtimeRef = useRef<number>(0);
   const fileRef = useRef(file);
   const onReloadRef = useRef(onReload);
@@ -52,9 +56,45 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    const position = editor.getPosition();
+    onCursorChange?.({
+      line: position?.lineNumber || 1,
+      column: position?.column || 1,
+    });
 
-    // Register Monokai theme
-    monaco.editor.defineTheme("monokai", {
+    monaco.editor.defineTheme("yac-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [],
+      colors: {
+        "editor.background": "#1e1e1e",
+        "editor.foreground": "#d4d4d4",
+        "editor.selectionBackground": "#264f78",
+        "editorCursor.foreground": "#d4d4d4",
+        "minimap.background": "#1e1e1e",
+        "minimapSlider.background": "#79797933",
+        "minimapSlider.hoverBackground": "#64646459",
+        "minimapSlider.activeBackground": "#bfbfbf33",
+      },
+    });
+
+    monaco.editor.defineTheme("yac-light", {
+      base: "vs",
+      inherit: true,
+      rules: [],
+      colors: {
+        "editor.background": "#ffffff",
+        "editor.foreground": "#333333",
+        "editor.selectionBackground": "#add6ff",
+        "editorCursor.foreground": "#333333",
+        "minimap.background": "#ffffff",
+        "minimapSlider.background": "#0000001a",
+        "minimapSlider.hoverBackground": "#00000026",
+        "minimapSlider.activeBackground": "#00000033",
+      },
+    });
+
+    monaco.editor.defineTheme("yac-monokai", {
       base: "vs-dark",
       inherit: true,
       rules: [
@@ -70,11 +110,14 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
         "editor.foreground": "#f8f8f2",
         "editor.selectionBackground": "#49483e",
         "editorCursor.foreground": "#f8f8f0",
+        "minimap.background": "#272822",
+        "minimapSlider.background": "#75715e33",
+        "minimapSlider.hoverBackground": "#75715e59",
+        "minimapSlider.activeBackground": "#f8f8f233",
       },
     });
 
-    // Register Solarized Dark theme
-    monaco.editor.defineTheme("solarized-dark", {
+    monaco.editor.defineTheme("yac-solarized-dark", {
       base: "vs-dark",
       inherit: true,
       rules: [
@@ -94,6 +137,10 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
         "editorCursor.foreground":        "#819090",
         "editor.lineHighlightBackground": "#073642",
         "editorLineNumber.foreground":    "#586e75",
+        "minimap.background":             "#002b36",
+        "minimapSlider.background":       "#586e7533",
+        "minimapSlider.hoverBackground":  "#586e7559",
+        "minimapSlider.activeBackground": "#83949633",
       },
     });
 
@@ -108,6 +155,22 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyG, () => {
       editor.getAction("editor.action.gotoLine")?.run();
     });
+
+    editor.onDidChangeCursorPosition((event) => {
+      onCursorChange?.({
+        line: event.position.lineNumber,
+        column: event.position.column,
+      });
+    });
+
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) {
+      lastLayoutSizeRef.current = {
+        width: Math.floor(rect.width),
+        height: Math.floor(rect.height),
+      };
+      editor.layout(lastLayoutSizeRef.current);
+    }
 
     // Check for external changes when editor gains focus
     editor.onDidFocusEditorText(async () => {
@@ -136,6 +199,48 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
     }
   }, [theme]);
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const scheduleLayout = (width: number, height: number) => {
+      const next = {
+        width: Math.floor(width),
+        height: Math.floor(height),
+      };
+      if (next.width <= 0 || next.height <= 0) return;
+      const last = lastLayoutSizeRef.current;
+      if (last.width === next.width && last.height === next.height) return;
+
+      lastLayoutSizeRef.current = next;
+      if (layoutFrameRef.current !== null) {
+        cancelAnimationFrame(layoutFrameRef.current);
+      }
+      layoutFrameRef.current = requestAnimationFrame(() => {
+        layoutFrameRef.current = null;
+        editorRef.current?.layout(next);
+      });
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      scheduleLayout(entry.contentRect.width, entry.contentRect.height);
+    });
+
+    observer.observe(el);
+    const rect = el.getBoundingClientRect();
+    scheduleLayout(rect.width, rect.height);
+
+    return () => {
+      observer.disconnect();
+      if (layoutFrameRef.current !== null) {
+        cancelAnimationFrame(layoutFrameRef.current);
+        layoutFrameRef.current = null;
+      }
+    };
+  }, []);
+
   // Record mtime when file is opened / changed
   useEffect(() => {
     const checkMtime = async () => {
@@ -149,26 +254,32 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
   }, [file.path, rootPath]);
 
   return (
-    <Editor
-      height="100%"
-      language={getLanguage(file.name)}
-      value={file.content}
-      theme={getMonacoTheme(theme)}
-      onChange={(val) => onChange(val || "")}
-      onMount={handleMount}
-      options={{
-        fontSize: settings?.fontSize ?? 14,
-        fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, monospace",
-        minimap: { enabled: true },
-        wordWrap: settings?.wordWrap ?? "off",
-        scrollBeyondLastLine: false,
-        renderWhitespace: "selection",
-        tabSize: settings?.tabSize ?? 4,
-        smoothScrolling: true,
-        cursorBlinking: "smooth",
-        cursorSmoothCaretAnimation: "on",
-        automaticLayout: true,
-      }}
-    />
+    <div className="monaco-editor-host" ref={containerRef}>
+      <Editor
+        height="100%"
+        language={getLanguage(file.name)}
+        value={file.content}
+        theme={getMonacoTheme(theme)}
+        onChange={(val) => onChange(val || "")}
+        onMount={handleMount}
+        options={{
+          fontSize: settings?.fontSize ?? 14,
+          fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, monospace",
+          minimap: {
+            enabled: settings?.minimapEnabled ?? true,
+            renderCharacters: false,
+            showSlider: "mouseover",
+          },
+          wordWrap: settings?.wordWrap ?? "off",
+          scrollBeyondLastLine: false,
+          renderWhitespace: "selection",
+          tabSize: settings?.tabSize ?? 4,
+          smoothScrolling: true,
+          cursorBlinking: "smooth",
+          cursorSmoothCaretAnimation: "on",
+          automaticLayout: false,
+        }}
+      />
+    </div>
   );
 }

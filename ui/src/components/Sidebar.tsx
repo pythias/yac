@@ -10,8 +10,9 @@ interface FileEntry {
 }
 
 interface Props {
-  rootPath: string | null;
-  setRootPath: (path: string) => void;
+  workspaceFolders: string[];
+  onAddFolder: (path: string) => void;
+  onRemoveFolder: (path: string) => void;
   onOpenFile: (path: string, name: string) => void;
   onOpenTerminal?: (cwd: string) => void;
   width: number;
@@ -20,8 +21,8 @@ interface Props {
   onToggleSearch: () => void;
 }
 
-export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTerminal, width, onWidthChange, showSearch, onToggleSearch }: Props) {
-  const [entries, setEntries] = useState<FileEntry[]>([]);
+export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder, onOpenFile, onOpenTerminal, width, onWidthChange, showSearch, onToggleSearch }: Props) {
+  const [entriesByRoot, setEntriesByRoot] = useState<Record<string, FileEntry[]>>({});
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -46,50 +47,51 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: FileEntry } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
 
+  const getWorkspaceRootForPath = useCallback((path: string): string | null => {
+    let best: string | null = null;
+    for (const folder of workspaceFolders) {
+      if ((path === folder || path.startsWith(`${folder}/`)) && (!best || folder.length > best.length)) {
+        best = folder;
+      }
+    }
+    return best;
+  }, [workspaceFolders]);
+
   const loadDir = async (path: string): Promise<FileEntry[]> => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      return await invoke<FileEntry[]>("read_dir", { path, workspaceRoot: rootPath });
+      return await invoke<FileEntry[]>("read_dir", { path, workspaceRoot: getWorkspaceRootForPath(path) });
     } catch {
       return [];
     }
   };
 
   const refreshDir = useCallback(async () => {
-    if (rootPath) {
-      const result = await loadDir(rootPath);
-      setEntries(result);
+    const next: Record<string, FileEntry[]> = {};
+    for (const folder of workspaceFolders) {
+      next[folder] = await loadDir(folder);
     }
-  }, [rootPath]);
+    setEntriesByRoot(next);
+  }, [workspaceFolders, getWorkspaceRootForPath]);
 
   useEffect(() => {
     refreshDir();
-  }, [rootPath]);
+  }, [refreshDir]);
+
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const folder of workspaceFolders) next.add(folder);
+      return next;
+    });
+  }, [workspaceFolders]);
 
   const handleOpen = async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-
-    const selected = await open({ directory: true, multiple: false });
+    const selected = await open({ directory: true, multiple: true });
     if (selected) {
-      if (!rootPath) {
-        setRootPath(selected as string);
-      } else {
-        const label = `win_${Date.now()}`;
-        const url = `index.html?rootPath=${encodeURIComponent(selected as string)}`;
-
-        const webview = new WebviewWindow(label, {
-          title: `Yac IDE — ${selected}`,
-          width: 1200,
-          height: 800,
-          url: url
-        });
-
-        webview.once("tauri://error", (e) => {
-          console.error("Failed to open new window:", e);
-          setRootPath(selected as string);
-        });
-      }
+      const folders = Array.isArray(selected) ? selected : [selected];
+      folders.forEach((folder) => onAddFolder(folder));
     }
   };
 
@@ -105,7 +107,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
       const children = await loadDir(entry.path);
       entry.children = children;
       setExpanded((prev) => new Set(prev).add(key));
-      setEntries([...entries]);
+      setEntriesByRoot((prev) => ({ ...prev }));
     }
   };
 
@@ -119,6 +121,8 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
     const items: MenuItem[] = [];
     const termCwd = entry.is_dir ? entry.path : entry.path.substring(0, entry.path.lastIndexOf("/"));
     const parentDir = entry.is_dir ? entry.path : entry.path.substring(0, entry.path.lastIndexOf("/"));
+    const workspaceRoot = getWorkspaceRootForPath(entry.path);
+    const isWorkspaceRoot = workspaceFolders.includes(entry.path);
 
     items.push({
       label: "Open in Terminal",
@@ -142,7 +146,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
           if (!name) return;
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_file", { path: `${parentDir}/${name}`, workspaceRoot: rootPath });
+            await invoke("create_file", { path: `${parentDir}/${name}`, workspaceRoot });
             refreshDir();
           } catch (e) {
             console.error("Create file failed:", e);
@@ -156,7 +160,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
           if (!name) return;
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_dir", { path: `${parentDir}/${name}`, workspaceRoot: rootPath });
+            await invoke("create_dir", { path: `${parentDir}/${name}`, workspaceRoot });
             refreshDir();
           } catch (e) {
             console.error("Create folder failed:", e);
@@ -176,6 +180,15 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
       action: () => navigator.clipboard.writeText(entry.name),
     });
 
+    if (isWorkspaceRoot) {
+      items.push({
+        label: "Remove Folder from Workspace",
+        separator: true,
+        action: () => onRemoveFolder(entry.path),
+      });
+      return items;
+    }
+
     items.push({
       label: "Rename",
       separator: true,
@@ -188,7 +201,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
         if (!confirm(`Delete "${entry.name}"?`)) return;
         try {
           const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("delete_path", { path: entry.path, workspaceRoot: rootPath });
+          await invoke("delete_path", { path: entry.path, workspaceRoot });
           refreshDir();
         } catch (e) {
           console.error("Delete failed:", e);
@@ -206,7 +219,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
     const newPath = `${parentDir}/${newName}`;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("rename_path", { oldPath: entry.path, newPath, workspaceRoot: rootPath });
+      await invoke("rename_path", { oldPath: entry.path, newPath, workspaceRoot: getWorkspaceRootForPath(entry.path) });
       refreshDir();
     } catch (e) {
       console.error("Rename failed:", e);
@@ -273,7 +286,7 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
       </div>
       {showSearch ? (
         <SearchPanel
-          rootPath={rootPath}
+          rootPaths={workspaceFolders}
           onOpenFile={onOpenFile}
           onClose={() => onToggleSearch()}
         />
@@ -282,10 +295,18 @@ export default function Sidebar({ rootPath, setRootPath, onOpenFile, onOpenTermi
           <div className="sidebar-header">
             Explorer
             <button onClick={handleOpen} style={{ marginLeft: "auto", background: "none", border: "none", color: "#0af", cursor: "pointer", fontSize: 11 }}>
-              Open Folder
+              Add Folder
             </button>
           </div>
-          {entries.map((e) => renderEntry(e, 0))}
+          {workspaceFolders.map((folder) => {
+            const rootEntry: FileEntry = {
+              name: folder.split("/").pop() || folder,
+              path: folder,
+              is_dir: true,
+              children: entriesByRoot[folder] || [],
+            };
+            return renderEntry(rootEntry, 0);
+          })}
         </>
       )}
       {contextMenu && (

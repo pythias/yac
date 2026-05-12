@@ -7,12 +7,12 @@ interface SearchMatch {
 }
 
 interface Props {
-  rootPath: string | null;
+  rootPaths: string[];
   onOpenFile: (path: string, name: string) => void;
   onClose: () => void;
 }
 
-export default function SearchPanel({ rootPath, onOpenFile, onClose }: Props) {
+export default function SearchPanel({ rootPaths, onOpenFile, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchMatch[]>([]);
   const [searching, setSearching] = useState(false);
@@ -24,19 +24,23 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: Props) {
   }, []);
 
   const doSearch = async (q: string) => {
-    if (!q.trim() || !rootPath) {
+    if (!q.trim() || rootPaths.length === 0) {
       setResults([]);
       return;
     }
     setSearching(true);
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      const matches = await invoke<SearchMatch[]>("grep_files", {
-        root: rootPath,
-        pattern: q,
-        maxResults: 50,
-      });
-      setResults(matches);
+      const groups = await Promise.all(
+        rootPaths.map((root) =>
+          invoke<SearchMatch[]>("grep_files", {
+            root,
+            pattern: q,
+            maxResults: 50,
+          }).catch(() => [])
+        )
+      );
+      setResults(groups.flat().slice(0, 50));
       setSelected(0);
     } catch {
       setResults([]);
@@ -47,8 +51,10 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: Props) {
 
   const getFileName = (path: string) => path.split("/").pop() || path;
   const getShortPath = (path: string) => {
-    if (!rootPath) return path;
-    return path.startsWith(rootPath) ? path.slice(rootPath.length + 1) : path;
+    const root = rootPaths
+      .filter((folder) => path === folder || path.startsWith(`${folder}/`))
+      .sort((a, b) => b.length - a.length)[0];
+    return root ? path.slice(root.length + 1) : path;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

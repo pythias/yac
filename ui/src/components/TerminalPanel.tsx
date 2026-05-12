@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, memo } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
-import { WebglAddon } from "@xterm/addon-webgl";
+// import { WebglAddon } from "@xterm/addon-webgl"; // Often causes flickering or artifacts in some environments
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import ContextMenu from "./ContextMenu";
@@ -125,8 +125,87 @@ function getDirName(path: string): string {
   return parts[parts.length - 1] || "Terminal";
 }
 
+interface TabItemProps {
+  tab: TermTab;
+  index: number;
+  isActive: boolean;
+  isEditing: boolean;
+  onClick: () => void;
+  onDoubleClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onRename: (title: string) => void;
+  onCancelRename: () => void;
+  onClose: () => void;
+  canClose: boolean;
+}
+
+const TabItem = memo(({
+  tab, index, isActive, isEditing, onClick, onDoubleClick, onContextMenu, onRename, onCancelRename, onClose, canClose
+}: TabItemProps) => {
+  return (
+    <div
+      className={`terminal-tab-item ${isActive ? 'active' : ''}`}
+      style={{ borderBottom: isActive ? `1px solid ${tab.color ?? "#0af"}` : "none" }}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
+    >
+      {isEditing ? (
+        <input
+          autoFocus
+          defaultValue={tab.title}
+          style={{
+            background: "transparent",
+            border: "1px solid #555",
+            color: "#ddd",
+            fontSize: 11,
+            width: 80,
+            outline: "none",
+          }}
+          onBlur={(e) => onRename(e.target.value || tab.title)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              onRename((e.target as HTMLInputElement).value || tab.title);
+            } else if (e.key === "Escape") {
+              onCancelRename();
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <>
+          <div style={{
+            width: 16, height: 16, borderRadius: 3,
+            background: tab.color ?? "#0af",
+            display: "flex", alignItems: "center",
+            justifyContent: "center", flexShrink: 0,
+          }}>
+            <i
+              className={`fa-solid fa-${tab.icon ?? "terminal"}`}
+              style={{ fontSize: 9, color: iconColor(tab.color ?? "#0af") }}
+            />
+          </div>
+          <span>{tab.title}</span>
+        </>
+      )}
+      {canClose && (
+        <span
+          className="terminal-tab-close"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+        >
+          ×
+        </span>
+      )}
+    </div>
+  );
+});
+
 const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, onTogglePosition, theme }, ref) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const fitFrameRef = useRef<number | null>(null);
   const [tabs, setTabs] = useState<TermTab[]>([]);
   const [activeTab, setActiveTab] = useState<number>(0);
   const [editingTab, setEditingTab] = useState<number | null>(null);
@@ -136,12 +215,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     targetIndex: number;
     submenu: "color" | "icon" | null;
   } | null>(null);
+
   const safeSearch = useCallback((tab: TermTab | undefined, action: "findNext" | "findPrevious", query: string) => {
     if (!tab || !query) return;
     try {
       tab.searchAddon[action](query);
     } catch {
-      // xterm-addon-search may panic on fresh terminals or WebGL contexts
+      // xterm-addon-search may panic on fresh terminals
     }
   }, []);
 
@@ -152,13 +232,26 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
 
   tabsRef.current = tabs;
 
-  // 监听 PTY 输出事件（只注册一次）
+  const fitVisibleTerminal = useCallback((tab: TermTab | undefined, focus = false) => {
+    if (!tab) return;
+    if (fitFrameRef.current !== null) {
+      cancelAnimationFrame(fitFrameRef.current);
+    }
+    fitFrameRef.current = requestAnimationFrame(() => {
+      fitFrameRef.current = null;
+      tab.fitAddon.fit();
+      if (focus) tab.terminal.focus();
+    });
+  }, []);
+
+  // Listen to PTY output
   useEffect(() => {
     const unlistenPromise = listen<PtyOutputEvent>("pty-output", (event) => {
       const { ptyId, data } = event.payload;
+      const dataArray = new Uint8Array(data);
       for (const tab of tabsRef.current) {
         if (tab.ptyId === ptyId) {
-          tab.terminal.write(new Uint8Array(data));
+          tab.terminal.write(dataArray);
           break;
         }
       }
@@ -180,6 +273,9 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       scrollback: 10000,
       allowProposedApi: true,
       convertEol: true,
+      // Disable some heavy options
+      fastScrollModifier: "alt",
+      screenReaderMode: false,
     });
 
     const fitAddon = new FitAddon();
@@ -188,19 +284,17 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
 
-    // Try WebGL renderer for better performance, fall back to canvas
-    try {
-      const webglAddon = new WebglAddon();
-      term.loadAddon(webglAddon);
-    } catch {
-      // WebGL not available, canvas renderer is fine
-    }
+    // We removed WebglAddon as it can cause flickering in some Tauri/WebView environments
+    // The canvas renderer is more stable for general use.
 
     const containerEl = document.createElement("div");
+    containerEl.className = "xterm-pane";
     containerEl.style.width = "100%";
     containerEl.style.height = "100%";
-    containerEl.style.display = "block"; // Must be visible to measure
-    containerEl.style.visibility = "hidden"; // But we hide it visually
+    containerEl.style.visibility = "hidden";
+    containerEl.style.position = "absolute";
+    containerEl.style.inset = "0";
+    containerEl.style.pointerEvents = "none";
 
     if (wrapperRef.current) {
       wrapperRef.current.appendChild(containerEl);
@@ -208,7 +302,7 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
 
     term.open(containerEl);
     
-    // Measure actual dimensions before spawning PTY to avoid messy initialization
+    // Measure and spawn PTY
     const dims = fitAddon.proposeDimensions();
     const cols = dims?.cols || 80;
     const rows = dims?.rows || 24;
@@ -223,10 +317,6 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     term.onResize(({ cols, rows }) => {
       invoke("pty_resize", { id: ptyId, rows, cols });
     });
-
-    // Reset styles after measurement
-    containerEl.style.visibility = "visible";
-    containerEl.style.display = "none";
 
     const title = effectiveCwd ? getDirName(effectiveCwd) : `Terminal ${tabsRef.current.length + 1}`;
 
@@ -254,11 +344,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       createTerminal(dir);
     },
     fitAll: () => {
-      tabsRef.current.forEach((tab) => tab?.fitAddon?.fit());
+      tabsRef.current.forEach((tab) => {
+        if (tab.containerEl.offsetParent) tab.fitAddon.fit();
+      });
     },
   }), [createTerminal]);
 
-  // 初始化第一个终端
+  // Initial terminal
   useEffect(() => {
     let cancelled = false;
     let termTab: TermTab | null = null;
@@ -267,6 +359,10 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     });
     return () => {
       cancelled = true;
+      if (fitFrameRef.current !== null) {
+        cancelAnimationFrame(fitFrameRef.current);
+        fitFrameRef.current = null;
+      }
       if (termTab) {
         termTab.containerEl.remove();
         termTab.terminal.dispose();
@@ -274,51 +370,42 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     };
   }, []);
 
-  // 切换 tab 时控制 display 可见性
+  // Sync tab visibility and fit
   useEffect(() => {
     tabs.forEach((tab, i) => {
-      tab.containerEl.style.display = i === activeTab ? "block" : "none";
+      const isVisible = i === activeTab;
+      tab.containerEl.style.visibility = isVisible ? "visible" : "hidden";
+      tab.containerEl.style.pointerEvents = isVisible ? "auto" : "none";
+      tab.containerEl.style.zIndex = isVisible ? "1" : "0";
+      if (isVisible) {
+        fitVisibleTerminal(tab, true);
+      }
     });
-    const active = tabs[activeTab];
-    if (active) {
-      active.fitAddon.fit();
-      active.terminal.focus();
-    }
-  }, [activeTab, tabs]);
+  }, [activeTab, tabs.length, fitVisibleTerminal]); // Only re-run when active tab index changes or tabs are added/removed
 
-  // Window resize → fit active terminal
+  // Handle window resize and position toggle
   useEffect(() => {
     const onResize = () => {
       const tab = tabs[activeTab];
       if (tab) tab.fitAddon.fit();
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [activeTab, tabs]);
-
-  useEffect(() => {
-    if (!contextMenu?.submenu) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".tab-color-picker") && !target.closest(".tab-icon-picker")) {
-        setContextMenu(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [contextMenu?.submenu]);
-
-  useEffect(() => {
-    tabsRef.current.forEach((tab) => tab?.fitAddon?.fit());
-  }, [position]);
-
-  useEffect(() => {
-    tabsRef.current.forEach((tab) => {
-      if (tab) {
-        tab.terminal.options.theme = getXtermTheme(theme) as any;
-      }
+    
+    // Fit all visible terminals when position changes
+    tabs.forEach(tab => {
+        if (tab.containerEl.style.visibility === "visible") {
+            tab.fitAddon.fit();
+        }
     });
-  }, [theme]);
+
+    return () => window.removeEventListener("resize", onResize);
+  }, [activeTab, tabs, position]);
+
+  useEffect(() => {
+    tabs.forEach((tab) => {
+      tab.terminal.options.theme = getXtermTheme(theme) as any;
+    });
+  }, [theme, tabs]);
 
   const handleRenameTab = (index: number, newTitle: string) => {
     setTabs((prev) =>
@@ -327,8 +414,8 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     setEditingTab(null);
   };
 
-  const handleCloseTab = async (index: number) => {
-    const tab = tabs[index];
+  const handleCloseTab = useCallback(async (index: number) => {
+    const tab = tabsRef.current[index];
     if (!tab) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -345,76 +432,33 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
       }
       return next;
     });
-  };
+  }, [activeTab]);
 
   return (
     <>
       <div className="terminal-tabs">
         {tabs.map((tab, i) => (
-          <div
+          <TabItem
             key={tab.id}
-            className="terminal-tab-item"
-            style={{ borderBottom: i === activeTab ? `1px solid ${tab.color ?? "#0af"}` : "none" }}
+            tab={tab}
+            index={i}
+            isActive={i === activeTab}
+            isEditing={editingTab === i}
             onClick={() => setActiveTab(i)}
             onDoubleClick={() => setEditingTab(i)}
             onContextMenu={(e) => {
               e.preventDefault();
               setContextMenu({ x: e.clientX, y: e.clientY, targetIndex: i, submenu: null });
             }}
-          >
-            {editingTab === i ? (
-              <input
-                autoFocus
-                defaultValue={tab.title}
-                style={{
-                  background: "transparent",
-                  border: "1px solid #555",
-                  color: "#ddd",
-                  fontSize: 11,
-                  width: 80,
-                  outline: "none",
-                }}
-                onBlur={(e) => handleRenameTab(i, e.target.value || tab.title)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleRenameTab(i, (e.target as HTMLInputElement).value || tab.title);
-                  } else if (e.key === "Escape") {
-                    setEditingTab(null);
-                  }
-                }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <>
-                <div style={{
-                  width: 16, height: 16, borderRadius: 3,
-                  background: tab.color ?? "#0af",
-                  display: "flex", alignItems: "center",
-                  justifyContent: "center", flexShrink: 0,
-                }}>
-                  <i
-                    className={`fa-solid fa-${tab.icon ?? "terminal"}`}
-                    style={{ fontSize: 9, color: iconColor(tab.color ?? "#0af") }}
-                  />
-                </div>
-                <span>{tab.title}</span>
-              </>
-            )}
-            {tabs.length > 1 && (
-              <span
-                className="terminal-tab-close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseTab(i);
-                }}
-              >
-                ×
-              </span>
-            )}
-          </div>
+            onRename={(title) => handleRenameTab(i, title)}
+            onCancelRename={() => setEditingTab(null)}
+            onClose={() => handleCloseTab(i)}
+            canClose={tabs.length > 1}
+          />
         ))}
-        <button onClick={() => createTerminal()}>+</button>
+        <button className="add-term-btn" onClick={() => createTerminal()}>+</button>
         <button
+          className="toggle-pos-btn"
           title={position === "bottom" ? "移到右侧" : "移到底部"}
           onClick={onTogglePosition}
           style={{ marginLeft: "auto" }}
@@ -430,10 +474,10 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              safeSearch(tabsRef.current[activeTab], "findNext", e.target.value);
+              safeSearch(tabs[activeTab], "findNext", e.target.value);
             }}
             onKeyDown={(e) => {
-              const tab = tabsRef.current[activeTab];
+              const tab = tabs[activeTab];
               if (!tab) return;
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -445,8 +489,8 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
               }
             }}
           />
-          <button onClick={() => safeSearch(tabsRef.current[activeTab], "findPrevious", searchQuery)}>▲</button>
-          <button onClick={() => safeSearch(tabsRef.current[activeTab], "findNext", searchQuery)}>▼</button>
+          <button onClick={() => safeSearch(tabs[activeTab], "findPrevious", searchQuery)}>▲</button>
+          <button onClick={() => safeSearch(tabs[activeTab], "findNext", searchQuery)}>▼</button>
           <button onClick={() => {
             setShowSearch(false);
             setSearchQuery("");
