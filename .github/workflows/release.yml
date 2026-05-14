@@ -53,60 +53,90 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
           rm certificate.p12
 
-      - name: Build Tauri app
-        run: cargo tauri build --target universal-apple-darwin
+      - name: Build Tauri app (Apple Silicon)
+        run: cargo tauri build --target aarch64-apple-darwin
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Find and rename DMG
-        id: find_dmg
+      - name: Build Tauri app (Intel)
+        run: cargo tauri build --target x86_64-apple-darwin
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Package DMGs and compute checksums
+        id: dmg
         run: |
-          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          
-          # Versioned file
-          NEW_NAME="Yac.IDE_${VERSION}_universal.dmg"
-          NEW_PATH="$(dirname "$DMG")/${NEW_NAME}"
-          cp "$DMG" "$NEW_PATH"
-          
-          # Latest pointer file
-          LATEST_NAME="Yac.IDE_latest_universal.dmg"
-          LATEST_PATH="$(dirname "$DMG")/${LATEST_NAME}"
-          cp "$DMG" "$LATEST_PATH"
-          
-          echo "path=$NEW_PATH" >> $GITHUB_OUTPUT
-          echo "latest_path=$LATEST_PATH" >> $GITHUB_OUTPUT
+
+          ARM_SRC=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          INTEL_SRC=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+
+          DEST_DIR="$(dirname "$ARM_SRC")"
+          ARM_V="${DEST_DIR}/Yac.IDE_${VERSION}_aarch64.dmg"
+          INTEL_V="${DEST_DIR}/Yac.IDE_${VERSION}_x64.dmg"
+          ARM_L="${DEST_DIR}/Yac.IDE_latest_aarch64.dmg"
+          INTEL_L="${DEST_DIR}/Yac.IDE_latest_x64.dmg"
+
+          cp "$ARM_SRC" "$ARM_V"
+          cp "$ARM_SRC" "$ARM_L"
+          cp "$INTEL_SRC" "$INTEL_V"
+          cp "$INTEL_SRC" "$INTEL_L"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256_arm=$(shasum -a 256 "$ARM_V" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "sha256_intel=$(shasum -a 256 "$INTEL_V" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "arm_v=$ARM_V" >> "$GITHUB_OUTPUT"
+          echo "intel_v=$INTEL_V" >> "$GITHUB_OUTPUT"
+          echo "arm_l=$ARM_L" >> "$GITHUB_OUTPUT"
+          echo "intel_l=$INTEL_L" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.find_dmg.outputs.path }}
-            ${{ steps.find_dmg.outputs.latest_path }}
+            ${{ steps.dmg.outputs.arm_v }}
+            ${{ steps.dmg.outputs.intel_v }}
+            ${{ steps.dmg.outputs.arm_l }}
+            ${{ steps.dmg.outputs.intel_l }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout homebrew-yac tap
+      - name: Checkout homebrew-tools tap
         uses: actions/checkout@v4
         with:
-          repository: pythias/homebrew-yac
+          repository: pythias/homebrew-tools
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-yac
+          path: homebrew-tools
 
       - name: Replace Homebrew Cask
+        env:
+          PKG_VERSION: ${{ steps.dmg.outputs.version }}
+          SHA_ARM: ${{ steps.dmg.outputs.sha256_arm }}
+          SHA_INTEL: ${{ steps.dmg.outputs.sha256_intel }}
         run: |
-          cd homebrew-yac
+          cd homebrew-tools
           mkdir -p Casks
-          cat > Casks/yac.rb <<EOF
+          cat <<'RUBY' > Casks/yac.rb
           cask "yac" do
-            version :latest
-            sha256 :no_check
+            version "__PKG_VERSION__"
 
-            url "https://github.com/pythias/yac/releases/latest/download/Yac.IDE_latest_universal.dmg"
+            on_arm do
+              url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_aarch64.dmg",
+                  verified: "github.com/pythias/yac/"
+              sha256 "__SHA_ARM__"
+            end
+
+            on_intel do
+              url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_x64.dmg",
+                  verified: "github.com/pythias/yac/"
+              sha256 "__SHA_INTEL__"
+            end
 
             name "Yac IDE"
             desc "A minimal IDE built with Tauri + React"
@@ -114,13 +144,18 @@ jobs:
 
             app "Yac IDE.app"
           end
-          EOF
+          RUBY
+          sed -i '' \
+            -e "s/__PKG_VERSION__/${PKG_VERSION}/g" \
+            -e "s/__SHA_ARM__/${SHA_ARM}/g" \
+            -e "s/__SHA_INTEL__/${SHA_INTEL}/g" \
+            Casks/yac.rb
           ruby -c Casks/yac.rb
           cat Casks/yac.rb
 
       - name: Commit and push Homebrew Cask
         run: |
-          cd homebrew-yac
+          cd homebrew-tools
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/yac.rb

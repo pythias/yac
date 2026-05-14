@@ -7,9 +7,20 @@
 ### 安装
 
 ```bash
-brew tap pythias/yac
+brew tap pythias/tools
 brew install yac
 ```
+
+Homebrew 会根据本机架构自动选择 Apple Silicon 或 Intel 安装包。
+
+### 直接下载（GitHub Releases 最新版）
+
+| 架构 | DMG |
+|------|-----|
+| Apple Silicon（M 系列芯片） | [Yac.IDE_latest_aarch64.dmg](https://github.com/pythias/yac/releases/latest/download/Yac.IDE_latest_aarch64.dmg) |
+| Intel（x86_64） | [Yac.IDE_latest_x64.dmg](https://github.com/pythias/yac/releases/latest/download/Yac.IDE_latest_x64.dmg) |
+
+版本化的文件名：`Yac.IDE_<版本>_aarch64.dmg` / `Yac.IDE_<版本>_x64.dmg`（在对应 [Release](https://github.com/pythias/yac/releases) 资产列表中）。
 
 ### 从源码运行
 

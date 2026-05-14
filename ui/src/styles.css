@@ -211,10 +211,11 @@ html, body, #root {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .file-tree-item:hover {
@@ -223,12 +224,52 @@ html, body, #root {
 
 .file-tree-item.active {
   background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.file-tree-item.workspace-root {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.file-tree-item.dirty .file-tree-name {
+  color: var(--text-primary);
 }
 
 .file-tree-item .icon {
   width: 16px;
   text-align: center;
   flex-shrink: 0;
+}
+
+.tree-chevron {
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 10px;
+}
+
+.tree-file-icon {
+  width: 15px;
+  flex: 0 0 15px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.file-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-dirty-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  margin-left: auto;
 }
 
 .editor-area {

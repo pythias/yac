@@ -23,6 +23,31 @@ interface SavedState {
 }
 
 const BASE_STATE_KEY = "yac-ide-state";
+const MAX_RECENT_FILES = 10;
+const RECENT_FILES_KEY = "yac-recent-files";
+export const UNTITLED_PREFIX = "untitled:";
+
+export function isUntitledPath(path: string): boolean {
+  return path.startsWith(UNTITLED_PREFIX);
+}
+
+function loadRecentPaths(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_FILES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentPaths(paths: string[]): void {
+  try {
+    localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(paths.slice(0, MAX_RECENT_FILES)));
+  } catch {}
+}
+
 const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   fontSize: 14,
   tabSize: 4,
@@ -183,6 +208,7 @@ export default function App() {
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const closeConfirmedRef = useRef(false);
   const closePromptOpenRef = useRef(false);
+  const untitledCounterRef = useRef(0);
 
   const [editorSettings, setEditorSettings] = useState<EditorSettings>(() => {
     try {
@@ -331,6 +357,15 @@ export default function App() {
   }, [editorSettings.minimapEnabled, editorSettings.wordWrap, openInNewWindow, showSidebar, showTerminal, theme]);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("sync_recent_files_menu", { paths: loadRecentPaths() });
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("yac-sidebar-width", String(sidebarWidth));
   }, [sidebarWidth]);
 
@@ -370,21 +405,39 @@ export default function App() {
     restore();
   }, [getWorkspaceRootForPath]);
 
-  // 持久化状态
+  // 持久化状态（不持久化未命名缓冲区）
   useEffect(() => {
+    const diskFiles = openFiles.filter((f) => !isUntitledPath(f.path));
+    const activePersist =
+      activeFile && !isUntitledPath(activeFile)
+        ? activeFile
+        : diskFiles[diskFiles.length - 1]?.path ?? null;
     const state: SavedState = {
       workspaceFolders,
       rootPath,
-      openFiles: openFiles.map((f) => ({ path: f.path, name: f.name })),
-      activeFile,
+      openFiles: diskFiles.map((f) => ({ path: f.path, name: f.name })),
+      activeFile: activePersist,
       showTerminal,
     };
     saveState(state);
   }, [workspaceFolders, rootPath, openFiles, activeFile, showTerminal]);
 
+  const pushRecentPath = useCallback(async (path: string) => {
+    if (isUntitledPath(path)) return;
+    const prev = loadRecentPaths();
+    const next = [path, ...prev.filter((p) => p !== path)].slice(0, MAX_RECENT_FILES);
+    saveRecentPaths(next);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("sync_recent_files_menu", { paths: next });
+    } catch {}
+  }, []);
+
   const openFile = useCallback(async (path: string, name: string) => {
-    if (openFiles.find((f) => f.path === path)) {
+    const existing = openFiles.find((f) => f.path === path);
+    if (existing) {
       setActiveFile(path);
+      await pushRecentPath(path);
       return;
     }
     try {
@@ -393,10 +446,11 @@ export default function App() {
       const file: OpenFile = { path, name, content, dirty: false };
       setOpenFiles((prev) => [...prev, file]);
       setActiveFile(path);
+      await pushRecentPath(path);
     } catch (e) {
       console.error("Failed to open file:", e);
     }
-  }, [getWorkspaceRootForPath, openFiles]);
+  }, [getWorkspaceRootForPath, openFiles, pushRecentPath]);
 
   const confirmDiscard = (files: OpenFile[]) => {
     const dirty = files.filter((f) => f.dirty);
@@ -456,14 +510,80 @@ export default function App() {
     if (!file) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("write_file", { path, content: file.content, workspaceRoot: getWorkspaceRootForPath(path) });
-      setOpenFiles((prev) =>
-        prev.map((f) => (f.path === path ? { ...f, dirty: false } : f))
-      );
+      if (isUntitledPath(path)) {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const suggested = rootPath ? `${rootPath.replace(/\/$/, "")}/Untitled.txt` : undefined;
+        const dest = await save(suggested ? { defaultPath: suggested } : {});
+        if (!dest || typeof dest !== "string") return;
+        const wsRoot = getWorkspaceRootForPath(dest);
+        await invoke("write_file", { path: dest, content: file.content, workspaceRoot: wsRoot });
+        const newName = dest.split("/").pop() || dest;
+        setOpenFiles((prev) =>
+          prev.map((f) => (f.path === path ? { ...f, path: dest, name: newName, dirty: false } : f))
+        );
+        setActiveFile(dest);
+        await pushRecentPath(dest);
+      } else {
+        await invoke("write_file", {
+          path,
+          content: file.content,
+          workspaceRoot: getWorkspaceRootForPath(path),
+        });
+        setOpenFiles((prev) =>
+          prev.map((f) => (f.path === path ? { ...f, dirty: false } : f))
+        );
+      }
     } catch (e) {
       console.error("Failed to save:", e);
     }
-  }, [getWorkspaceRootForPath, openFiles]);
+  }, [getWorkspaceRootForPath, openFiles, pushRecentPath, rootPath]);
+
+  const openSingleFileDialog = useCallback(async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({ directory: false, multiple: false });
+    if (selected == null || Array.isArray(selected)) return;
+    const name = selected.split("/").pop() || selected;
+    await openFile(selected, name);
+  }, [openFile]);
+
+  const openFolderReplace = useCallback(async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({ directory: true, multiple: false });
+    if (selected == null || Array.isArray(selected)) return;
+    setWorkspaceFolders([selected]);
+  }, []);
+
+  const spawnNewWindow = useCallback(async () => {
+    await openWorkspaceWindow([]);
+  }, []);
+
+  const newBlankTextFile = useCallback(() => {
+    untitledCounterRef.current += 1;
+    const n = untitledCounterRef.current;
+    const path = `${UNTITLED_PREFIX}${n}`;
+    const name = `Untitled-${n}`;
+    setOpenFiles((prev) => [...prev, { path, name, content: "", dirty: false }]);
+    setActiveFile(path);
+  }, []);
+
+  const clearRecentFiles = useCallback(async () => {
+    saveRecentPaths([]);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("sync_recent_files_menu", { paths: [] as string[] });
+    } catch {}
+  }, []);
+
+  const openRecentByIndex = useCallback(
+    async (index: number) => {
+      const paths = loadRecentPaths();
+      const targetPath = paths[index];
+      if (!targetPath) return;
+      const name = targetPath.split("/").pop() || targetPath;
+      await openFile(targetPath, name);
+    },
+    [openFile]
+  );
 
   const handleOpenTerminal = useCallback((cwd: string) => {
     setShowTerminal(true);
@@ -564,10 +684,28 @@ export default function App() {
 
       if (key === "o") {
         e.preventDefault();
-        if (e.shiftKey) {
+        if (e.altKey) {
           openWorkspaceFile();
+        } else if (e.shiftKey) {
+          openFolderReplace();
         } else {
-          openFolders();
+          void openSingleFileDialog();
+        }
+        return;
+      }
+
+      if (key === "a" && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        void openFolders();
+        return;
+      }
+
+      if (key === "n") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          void spawnNewWindow();
+        } else {
+          newBlankTextFile();
         }
         return;
       }
@@ -650,11 +788,15 @@ export default function App() {
     changeEditorFontSize,
     closeFile,
     destroyCurrentWindow,
+    newBlankTextFile,
     openFiles,
+    openFolderReplace,
     openFolders,
+    openSingleFileDialog,
     openWorkspaceFile,
     resetEditorFontSize,
     saveFile,
+    spawnNewWindow,
   ]);
 
   // Listen for menu events from Rust
@@ -664,11 +806,26 @@ export default function App() {
       const { listen } = await import("@tauri-apps/api/event");
       unlisten = await listen<string>("menu-event", (event) => {
         switch (event.payload) {
+          case "open-file":
+            void openSingleFileDialog();
+            break;
+          case "open-folder-replace":
+            void openFolderReplace();
+            break;
           case "add-folder-to-workspace":
             openFolders();
             break;
           case "open-workspace":
             openWorkspaceFile();
+            break;
+          case "clear-recent-files":
+            void clearRecentFiles();
+            break;
+          case "new-window":
+            void spawnNewWindow();
+            break;
+          case "new-text-file":
+            newBlankTextFile();
             break;
           case "toggle-sidebar":
             setShowSidebar((v) => !v);
@@ -710,20 +867,73 @@ export default function App() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, [changeEditorFontSize, editorSettings.minimapEnabled, editorSettings.wordWrap, openFolders, openInNewWindow, openWorkspaceFile, updateEditorSettings, updateOpenInNewWindow, updateTheme]);
+  }, [
+    changeEditorFontSize,
+    clearRecentFiles,
+    editorSettings.minimapEnabled,
+    editorSettings.wordWrap,
+    newBlankTextFile,
+    openFolderReplace,
+    openFolders,
+    openSingleFileDialog,
+    openWorkspaceFile,
+    openInNewWindow,
+    spawnNewWindow,
+    updateEditorSettings,
+    updateOpenInNewWindow,
+    updateTheme,
+  ]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    const setupRecentListener = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<number>("open-recent-file", (event) => {
+        void openRecentByIndex(event.payload);
+      });
+    };
+    void setupRecentListener();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openRecentByIndex]);
 
   const quickCommands: QuickCommand[] = useMemo(() => [
     {
+      id: "open-file",
+      title: "File: Open File",
+      subtitle: "Cmd/Ctrl+O",
+      run: openSingleFileDialog,
+    },
+    {
+      id: "open-folder-replace",
+      title: "File: Open Folder",
+      subtitle: "Cmd/Ctrl+Shift+O",
+      run: openFolderReplace,
+    },
+    {
       id: "add-folder",
       title: "File: Add Folder to Workspace",
-      subtitle: "Cmd/Ctrl+O",
+      subtitle: "Cmd/Ctrl+Shift+A",
       run: openFolders,
     },
     {
       id: "open-workspace",
       title: "File: Open Workspace",
-      subtitle: "Cmd/Ctrl+Shift+O",
+      subtitle: "Cmd/Ctrl+Alt+O",
       run: openWorkspaceFile,
+    },
+    {
+      id: "new-text-file",
+      title: "File: New Text File",
+      subtitle: "Cmd/Ctrl+N",
+      run: newBlankTextFile,
+    },
+    {
+      id: "new-window",
+      title: "File: New Window",
+      subtitle: "Cmd/Ctrl+Shift+N",
+      run: spawnNewWindow,
     },
     {
       id: "toggle-sidebar",
@@ -784,14 +994,18 @@ export default function App() {
     editorSettings.fontSize,
     editorSettings.minimapEnabled,
     editorSettings.wordWrap,
-    openInNewWindow,
-    showSidebar,
-    showTerminal,
-    theme,
-    workspaceFolders.length,
+    newBlankTextFile,
+    openFolderReplace,
     openFolders,
+    openInNewWindow,
+    openSingleFileDialog,
     openWorkspaceFile,
     resetEditorFontSize,
+    showSidebar,
+    showTerminal,
+    spawnNewWindow,
+    theme,
+    workspaceFolders.length,
     updateEditorSettings,
     updateOpenInNewWindow,
     updateTheme,
@@ -859,6 +1073,8 @@ export default function App() {
                 onRemoveFolder={removeWorkspaceFolder}
                 onOpenFile={openFile}
                 onOpenTerminal={handleOpenTerminal}
+                activeFile={activeFile}
+                dirtyFilePaths={openFiles.filter((file) => file.dirty).map((file) => file.path)}
                 width={sidebarWidth}
                 onWidthChange={setSidebarWidth}
                 showSearch={showSearchPanel}

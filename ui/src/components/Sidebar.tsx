@@ -15,13 +15,57 @@ interface Props {
   onRemoveFolder: (path: string) => void;
   onOpenFile: (path: string, name: string) => void;
   onOpenTerminal?: (cwd: string) => void;
+  activeFile: string | null;
+  dirtyFilePaths: string[];
   width: number;
   onWidthChange: (w: number) => void;
   showSearch: boolean;
   onToggleSearch: () => void;
 }
 
-export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder, onOpenFile, onOpenTerminal, width, onWidthChange, showSearch, onToggleSearch }: Props) {
+interface FileVisual {
+  icon: string;
+  color: string;
+}
+
+const FILE_VISUALS: Record<string, FileVisual> = {
+  rs: { icon: "gear", color: "#dea584" },
+  go: { icon: "file-code", color: "#00add8" },
+  py: { icon: "file-code", color: "#3776ab" },
+  js: { icon: "file-code", color: "#f7df1e" },
+  jsx: { icon: "file-code", color: "#61dafb" },
+  ts: { icon: "file-code", color: "#3178c6" },
+  tsx: { icon: "file-code", color: "#61dafb" },
+  json: { icon: "code", color: "#f0db4f" },
+  toml: { icon: "sliders", color: "#9c6f44" },
+  yaml: { icon: "sliders", color: "#cb171e" },
+  yml: { icon: "sliders", color: "#cb171e" },
+  md: { icon: "file-lines", color: "#8ab4f8" },
+  html: { icon: "code", color: "#e34f26" },
+  css: { icon: "file-code", color: "#1572b6" },
+  sh: { icon: "terminal", color: "#89e051" },
+  bash: { icon: "terminal", color: "#89e051" },
+  zsh: { icon: "terminal", color: "#89e051" },
+  sql: { icon: "database", color: "#4db6ac" },
+  xml: { icon: "code", color: "#ff9800" },
+  svg: { icon: "bezier-curve", color: "#ffb13b" },
+  png: { icon: "image", color: "#a78bfa" },
+  jpg: { icon: "image", color: "#a78bfa" },
+  jpeg: { icon: "image", color: "#a78bfa" },
+  gif: { icon: "image", color: "#a78bfa" },
+  webp: { icon: "image", color: "#a78bfa" },
+  dockerfile: { icon: "cube", color: "#2496ed" },
+};
+
+function fileVisual(entry: FileEntry, isExpanded: boolean, isWorkspaceRoot: boolean): FileVisual {
+  if (isWorkspaceRoot) return { icon: "boxes-stacked", color: "#0af" };
+  if (entry.is_dir) return { icon: isExpanded ? "folder-open" : "folder", color: "#dcb67a" };
+  const lower = entry.name.toLowerCase();
+  const ext = lower.includes(".") ? lower.split(".").pop() || "" : lower;
+  return FILE_VISUALS[ext] || { icon: "file-lines", color: "#8b949e" };
+}
+
+export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder, onOpenFile, onOpenTerminal, activeFile, dirtyFilePaths, width, onWidthChange, showSearch, onToggleSearch }: Props) {
   const [entriesByRoot, setEntriesByRoot] = useState<Record<string, FileEntry[]>>({});
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
@@ -229,11 +273,15 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
   const renderEntry = (entry: FileEntry, depth: number) => {
     const isExpanded = expanded.has(entry.path);
     const isRenaming = renaming === entry.path;
+    const isWorkspaceRoot = workspaceFolders.includes(entry.path);
+    const isActive = activeFile === entry.path;
+    const isDirty = dirtyFilePaths.includes(entry.path);
+    const visual = fileVisual(entry, isExpanded, isWorkspaceRoot);
 
     return (
       <div key={entry.path}>
         <div
-          className="file-tree-item"
+          className={`file-tree-item ${isActive ? "active" : ""} ${isDirty ? "dirty" : ""} ${isWorkspaceRoot ? "workspace-root" : ""}`}
           style={{ paddingLeft: `${12 + depth * 16}px` }}
           onClick={() => {
             if (entry.is_dir) {
@@ -244,7 +292,8 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
           }}
           onContextMenu={(e) => handleContextMenu(e, entry)}
         >
-          <span className="icon">{entry.is_dir ? (isExpanded ? "▾" : "▸") : ""}</span>
+          <span className="tree-chevron">{entry.is_dir ? (isExpanded ? "▾" : "▸") : ""}</span>
+          <i className={`tree-file-icon fa-solid fa-${visual.icon}`} style={{ color: visual.color }}></i>
           {isRenaming ? (
             <input
               autoFocus
@@ -258,7 +307,10 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
               }}
             />
           ) : (
-            <span>{entry.name}</span>
+            <>
+              <span className="file-tree-name">{entry.name}</span>
+              {isDirty && <span className="file-tree-dirty-dot" title="Modified"></span>}
+            </>
           )}
         </div>
         {entry.is_dir && isExpanded && entry.children?.map((child) => renderEntry(child, depth + 1))}

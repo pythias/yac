@@ -1,53 +1,66 @@
 name: Update Homebrew Cask
 
+# release.yml 已在发版后推送 Cask；此处仅用于手动对齐 tap（例如修复文案）。
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without the leading v, for example 0.1.5"
+        description: "Release 版本号（不带 v），例如 0.2.0"
         required: true
-  release:
-    types: [published]
 
 jobs:
   update-cask:
     runs-on: macos-latest
 
     steps:
-      - name: Get release info
+      - name: Resolve release tag
         id: release
         run: |
-          TAG="${{ github.event.release.tag_name || format('v{0}', inputs.version) }}"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          VERSION="${{ inputs.version }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Download DMG and compute sha256
+      - name: Download DMGs and compute sha256
         id: sha
         run: |
           VERSION="${{ steps.release.outputs.version }}"
-          URL="https://github.com/pythias/yac/releases/download/v${VERSION}/Yac.IDE_${VERSION}_aarch64.dmg"
-          curl -fL -o /tmp/yac.dmg "$URL"
-          SHA=$(shasum -a 256 /tmp/yac.dmg | awk '{print $1}')
-          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          TAG="${{ steps.release.outputs.tag }}"
+          BASE="https://github.com/pythias/yac/releases/download/${TAG}"
+          curl -fL -o /tmp/yac_aarch64.dmg "${BASE}/Yac.IDE_${VERSION}_aarch64.dmg"
+          curl -fL -o /tmp/yac_x64.dmg "${BASE}/Yac.IDE_${VERSION}_x64.dmg"
+          echo "sha256_arm=$(shasum -a 256 /tmp/yac_aarch64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "sha256_intel=$(shasum -a 256 /tmp/yac_x64.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout homebrew-yac tap
+      - name: Checkout homebrew-tools tap
         uses: actions/checkout@v4
         with:
-          repository: pythias/homebrew-yac
+          repository: pythias/homebrew-tools
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-yac
+          path: homebrew-tools
 
-      - name: Update formula
+      - name: Update Cask
+        env:
+          PKG_VERSION: ${{ steps.release.outputs.version }}
+          SHA_ARM: ${{ steps.sha.outputs.sha256_arm }}
+          SHA_INTEL: ${{ steps.sha.outputs.sha256_intel }}
         run: |
-          cd homebrew-yac
+          cd homebrew-tools
           mkdir -p Casks
-          cat > Casks/yac.rb <<EOF
+          cat <<'RUBY' > Casks/yac.rb
           cask "yac" do
-            version :latest
-            sha256 :no_check
+            version "__PKG_VERSION__"
 
-            url "https://github.com/pythias/yac/releases/latest/download/Yac.IDE_latest_universal.dmg"
+            on_arm do
+              url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_aarch64.dmg",
+                  verified: "github.com/pythias/yac/"
+              sha256 "__SHA_ARM__"
+            end
+
+            on_intel do
+              url "https://github.com/pythias/yac/releases/download/v#{version}/Yac.IDE_#{version}_x64.dmg",
+                  verified: "github.com/pythias/yac/"
+              sha256 "__SHA_INTEL__"
+            end
 
             name "Yac IDE"
             desc "A minimal IDE built with Tauri + React"
@@ -55,18 +68,23 @@ jobs:
 
             app "Yac IDE.app"
           end
-          EOF
+          RUBY
+          sed -i '' \
+            -e "s/__PKG_VERSION__/${PKG_VERSION}/g" \
+            -e "s/__SHA_ARM__/${SHA_ARM}/g" \
+            -e "s/__SHA_INTEL__/${SHA_INTEL}/g" \
+            Casks/yac.rb
           ruby -c Casks/yac.rb
           cat Casks/yac.rb
 
       - name: Commit and push
         run: |
-          cd homebrew-yac
+          cd homebrew-tools
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/yac.rb
           if git diff --cached --quiet; then
-            echo "Casks/yac.rb already matches this release."
+            echo "Casks/yac.rb already matches."
             exit 0
           fi
           git commit -m "chore: update yac to ${{ steps.release.outputs.version }}"

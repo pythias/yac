@@ -1,7 +1,8 @@
 import { useRef, useEffect } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
-import { OpenFile } from "../App";
+import { OpenFile, isUntitledPath } from "../App";
 import { EditorSettings } from "../settings";
+import "../monacoSetup";
 
 interface Props {
   file: OpenFile;
@@ -175,7 +176,7 @@ export default function MonacoEditor({ file, rootPath, onChange, onSave, onReloa
     // Check for external changes when editor gains focus
     editor.onDidFocusEditorText(async () => {
       const f = fileRef.current;
-      if (!f.path || f.dirty) return;
+      if (!f.path || isUntitledPath(f.path) || f.dirty) return;
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         const info = await invoke<{ mtime: number }>("get_file_info", { path: f.path, workspaceRoot: rootPath });
