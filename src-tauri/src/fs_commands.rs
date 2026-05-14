@@ -141,7 +141,8 @@ fn resolve_new_path(path: &str, workspace_root: Option<&str>) -> Result<PathBuf,
     let file_name = path
         .file_name()
         .ok_or_else(|| format!("Missing file name: {}", path.display()))?;
-    if file_name.to_string_lossy().contains('/') {
+    let name = file_name.to_string_lossy();
+    if name.contains('/') || name.contains('\\') {
         return Err("Invalid file name".to_string());
     }
     let parent = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
@@ -165,30 +166,8 @@ fn ensure_in_workspace(path: &Path, workspace_root: Option<&str>) -> Result<(), 
 }
 
 fn move_to_trash(path: &Path) -> Result<PathBuf, String> {
-    let trash_dir = match std::env::var("YAC_TRASH_DIR") {
-        Ok(path) => PathBuf::from(path),
-        Err(_) => {
-            let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
-            PathBuf::from(home).join(".Trash")
-        }
-    };
-    std::fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
-
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| format!("Missing file name: {}", path.display()))?
-        .to_string_lossy();
-    let mut target = trash_dir.join(file_name.as_ref());
-    if target.exists() {
-        let suffix = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        target = trash_dir.join(format!("{file_name}.{suffix}"));
-    }
-
-    std::fs::rename(path, &target).map_err(|e| e.to_string())?;
-    Ok(target)
+    trash::delete(path).map_err(|e| e.to_string())?;
+    Ok(path.to_path_buf())
 }
 
 fn grep_walk(
@@ -327,17 +306,13 @@ mod tests {
     #[test]
     fn delete_path_moves_file_to_trash_instead_of_removing_permanently() {
         let workspace = TestDir::new("workspace");
-        let trash = TestDir::new("trash");
         let target = workspace.path().join("delete-me.txt");
         fs::write(&target, "trash me").unwrap();
-        std::env::set_var("YAC_TRASH_DIR", trash.path());
 
-        let trashed = delete_path(target.to_str().unwrap(), Some(workspace.path().to_str().unwrap()))
+        delete_path(target.to_str().unwrap(), Some(workspace.path().to_str().unwrap()))
             .expect("delete should move to trash");
 
         assert!(!target.exists());
-        assert!(PathBuf::from(trashed).exists());
-        std::env::remove_var("YAC_TRASH_DIR");
     }
 
     #[test]

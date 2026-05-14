@@ -8,9 +8,10 @@ on:
 jobs:
   build-macos:
     runs-on: macos-latest
-    permissions:
-      contents: write
-
+    outputs:
+      version: ${{ steps.dmg.outputs.version }}
+      sha256_arm: ${{ steps.dmg.outputs.sha256_arm }}
+      sha256_intel: ${{ steps.dmg.outputs.sha256_intel }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,6 +53,14 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
           rm certificate.p12
+          security find-identity -v -p codesigning build.keychain
+          CERT_ID=$(security find-identity -v -p codesigning build.keychain | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+          if [ -z "$CERT_ID" ]; then
+            echo "Developer ID Application signing identity not found in build.keychain."
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          echo "Using signing identity: $CERT_ID"
 
       - name: Build Tauri app (Apple Silicon)
         run: cargo tauri build --target aarch64-apple-darwin
@@ -60,12 +69,28 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Verify Apple Silicon signing
+        run: |
+          APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Yac IDE.app"
+          codesign --display --verbose=4 "$APP"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+          xcrun stapler validate "$APP"
+
       - name: Build Tauri app (Intel)
         run: cargo tauri build --target x86_64-apple-darwin
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify Intel signing
+        run: |
+          APP="src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Yac IDE.app"
+          codesign --display --verbose=4 "$APP"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+          xcrun stapler validate "$APP"
 
       - name: Package DMGs and compute checksums
         id: dmg
@@ -90,19 +115,144 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha256_arm=$(shasum -a 256 "$ARM_V" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "sha256_intel=$(shasum -a 256 "$INTEL_V" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "arm_v=$ARM_V" >> "$GITHUB_OUTPUT"
-          echo "intel_v=$INTEL_V" >> "$GITHUB_OUTPUT"
-          echo "arm_l=$ARM_L" >> "$GITHUB_OUTPUT"
-          echo "intel_l=$INTEL_L" >> "$GITHUB_OUTPUT"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-assets
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Yac.IDE_*.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install
+        working-directory: ui
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Tauri app (NSIS)
+        run: cargo tauri build
+
+      - name: Collect Windows installer
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          mkdir -p upload
+          SRC=$(find src-tauri/target/release/bundle/nsis -name "*.exe" | head -1)
+          cp "$SRC" "upload/Yac.IDE_${VERSION}_x64-setup.exe"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets
+          path: upload/*
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install
+        working-directory: ui
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Tauri app (deb + AppImage)
+        run: cargo tauri build
+
+      - name: Collect Linux bundles
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          mkdir -p upload
+          DEB_SRC=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
+          IMG_SRC=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
+          cp "$DEB_SRC" "upload/Yac.IDE_${VERSION}_amd64.deb"
+          cp "$IMG_SRC" "upload/Yac.IDE_${VERSION}_amd64.AppImage"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-assets
+          path: upload/*
+
+  publish:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-release-assets
+          path: dist/macos
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-assets
+          path: dist/windows
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-release-assets
+          path: dist/linux
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.dmg.outputs.arm_v }}
-            ${{ steps.dmg.outputs.intel_v }}
-            ${{ steps.dmg.outputs.arm_l }}
-            ${{ steps.dmg.outputs.intel_l }}
+            dist/macos/*
+            dist/windows/*
+            dist/linux/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,9 +266,9 @@ jobs:
 
       - name: Replace Homebrew Cask
         env:
-          PKG_VERSION: ${{ steps.dmg.outputs.version }}
-          SHA_ARM: ${{ steps.dmg.outputs.sha256_arm }}
-          SHA_INTEL: ${{ steps.dmg.outputs.sha256_intel }}
+          PKG_VERSION: ${{ needs.build-macos.outputs.version }}
+          SHA_ARM: ${{ needs.build-macos.outputs.sha256_arm }}
+          SHA_INTEL: ${{ needs.build-macos.outputs.sha256_intel }}
         run: |
           cd homebrew-tools
           mkdir -p Casks
@@ -145,7 +295,7 @@ jobs:
             app "Yac IDE.app"
           end
           RUBY
-          sed -i '' \
+          sed -i \
             -e "s/__PKG_VERSION__/${PKG_VERSION}/g" \
             -e "s/__SHA_ARM__/${SHA_ARM}/g" \
             -e "s/__SHA_INTEL__/${SHA_INTEL}/g" \

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { OpenFile } from "../App";
 import { EditorSettings } from "../settings";
 
@@ -8,6 +9,8 @@ interface Props {
   settings: EditorSettings;
   theme: string;
   onToggleTerminal: () => void;
+  /** AI CLI launcher row (e.g. Codex / Claude); shown when workspace is open. */
+  aiCliShortcuts?: ReactNode;
 }
 
 function getLanguage(filename: string): string {
@@ -62,6 +65,7 @@ export default function StatusBar({
   settings,
   theme,
   onToggleTerminal,
+  aiCliShortcuts,
 }: Props) {
   return (
     <div className="status-bar">
@@ -77,6 +81,9 @@ export default function StatusBar({
           </div>
         )}
       </div>
+      {aiCliShortcuts ? (
+        <div className="status-bar-center">{aiCliShortcuts}</div>
+      ) : null}
       <div className="status-bar-right">
         <button className="status-button" onClick={onToggleTerminal} title="Toggle Terminal">
           <i className="fa-solid fa-terminal"></i>

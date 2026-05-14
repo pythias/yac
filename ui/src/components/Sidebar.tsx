@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import ContextMenu, { MenuItem } from "./ContextMenu";
 import SearchPanel from "./SearchPanel";
+import {
+  isPathUnderWorkspaceRoot,
+  pathBasename,
+  pathDirname,
+  pathJoin,
+} from "../pathUtils";
 
 interface FileEntry {
   name: string;
@@ -94,7 +100,7 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
   const getWorkspaceRootForPath = useCallback((path: string): string | null => {
     let best: string | null = null;
     for (const folder of workspaceFolders) {
-      if ((path === folder || path.startsWith(`${folder}/`)) && (!best || folder.length > best.length)) {
+      if (isPathUnderWorkspaceRoot(folder, path) && (!best || folder.length > best.length)) {
         best = folder;
       }
     }
@@ -163,8 +169,8 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
 
   const getContextMenuItems = (entry: FileEntry): MenuItem[] => {
     const items: MenuItem[] = [];
-    const termCwd = entry.is_dir ? entry.path : entry.path.substring(0, entry.path.lastIndexOf("/"));
-    const parentDir = entry.is_dir ? entry.path : entry.path.substring(0, entry.path.lastIndexOf("/"));
+    const termCwd = entry.is_dir ? entry.path : pathDirname(entry.path);
+    const parentDir = entry.is_dir ? entry.path : pathDirname(entry.path);
     const workspaceRoot = getWorkspaceRootForPath(entry.path);
     const isWorkspaceRoot = workspaceFolders.includes(entry.path);
 
@@ -190,7 +196,7 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
           if (!name) return;
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_file", { path: `${parentDir}/${name}`, workspaceRoot });
+            await invoke("create_file", { path: pathJoin(parentDir, name), workspaceRoot });
             refreshDir();
           } catch (e) {
             console.error("Create file failed:", e);
@@ -204,7 +210,7 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
           if (!name) return;
           try {
             const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("create_dir", { path: `${parentDir}/${name}`, workspaceRoot });
+            await invoke("create_dir", { path: pathJoin(parentDir, name), workspaceRoot });
             refreshDir();
           } catch (e) {
             console.error("Create folder failed:", e);
@@ -259,8 +265,8 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
   const handleRename = async (entry: FileEntry, newName: string) => {
     setRenaming(null);
     if (!newName || newName === entry.name) return;
-    const parentDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
-    const newPath = `${parentDir}/${newName}`;
+    const parentDir = pathDirname(entry.path);
+    const newPath = pathJoin(parentDir, newName);
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("rename_path", { oldPath: entry.path, newPath, workspaceRoot: getWorkspaceRootForPath(entry.path) });
@@ -352,7 +358,7 @@ export default function Sidebar({ workspaceFolders, onAddFolder, onRemoveFolder,
           </div>
           {workspaceFolders.map((folder) => {
             const rootEntry: FileEntry = {
-              name: folder.split("/").pop() || folder,
+              name: pathBasename(folder),
               path: folder,
               is_dir: true,
               children: entriesByRoot[folder] || [],

@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import ContextMenu from "./ContextMenu";
+import { pathBasename } from "../pathUtils";
 
 interface TermTab {
   id: number;
@@ -113,6 +114,10 @@ function getXtermTheme(theme: string) {
 export interface TerminalPanelHandle {
   createTerminalWithCwd: (cwd: string) => void;
   fitAll: () => void;
+  /** Write a full shell line (newline appended) to the active PTY; focuses xterm. */
+  runLineInActiveTerminal: (line: string) => Promise<void>;
+  /** Spawn a new terminal tab and write the line there (AI CLI shortcuts). */
+  runLineInNewTerminal: (line: string) => Promise<void>;
 }
 
 interface PtyOutputEvent {
@@ -121,8 +126,8 @@ interface PtyOutputEvent {
 }
 
 function getDirName(path: string): string {
-  const parts = path.replace(/\/+$/, "").split("/");
-  return parts[parts.length - 1] || "Terminal";
+  const base = pathBasename(path.replace(/[/\\]+$/, ""));
+  return base || "Terminal";
 }
 
 interface TabItemProps {
@@ -236,8 +241,13 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const tabsRef = useRef<TermTab[]>([]);
+  const activeTabRef = useRef(0);
 
   tabsRef.current = tabs;
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   const fitVisibleTerminal = useCallback((tab: TermTab | undefined, focus = false) => {
     if (!tab) return;
@@ -364,6 +374,41 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
     return newTab;
   }, [cwd, theme]);
 
+  const runLineInActiveTerminal = useCallback(
+    async (line: string) => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      for (let i = 0; i < 40 && tabsRef.current.length === 0; i++) {
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      let tab =
+        tabsRef.current[activeTabRef.current] ?? tabsRef.current[0];
+      if (!tab) {
+        tab = await createTerminal(cwd);
+      }
+      if (!tab) return;
+      const nl = /Windows/i.test(navigator.userAgent) ? "\r\n" : "\n";
+      const payload = line.replace(/\r?\n$/u, "") + nl;
+      const bytes = Array.from(new TextEncoder().encode(payload));
+      await invoke("pty_write", { id: tab.ptyId, data: bytes });
+      tab.terminal.focus();
+    },
+    [cwd, createTerminal]
+  );
+
+  const runLineInNewTerminal = useCallback(
+    async (line: string) => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const tab = await createTerminal(cwd);
+      if (!tab) return;
+      const nl = /Windows/i.test(navigator.userAgent) ? "\r\n" : "\n";
+      const payload = line.replace(/\r?\n$/u, "") + nl;
+      const bytes = Array.from(new TextEncoder().encode(payload));
+      await invoke("pty_write", { id: tab.ptyId, data: bytes });
+      tab.terminal.focus();
+    },
+    [cwd, createTerminal]
+  );
+
   useImperativeHandle(ref, () => ({
     createTerminalWithCwd: (dir: string) => {
       createTerminal(dir);
@@ -373,7 +418,9 @@ const TerminalPanel = forwardRef<TerminalPanelHandle, Props>(({ cwd, position, o
         if (tab.containerEl.offsetParent) tab.fitAddon.fit();
       });
     },
-  }), [createTerminal]);
+    runLineInActiveTerminal,
+    runLineInNewTerminal,
+  }), [createTerminal, runLineInActiveTerminal, runLineInNewTerminal]);
 
   // Initial terminal
   useEffect(() => {

@@ -1,9 +1,64 @@
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::Path;
 use std::thread;
 use crossbeam_channel::{Sender, unbounded};
 use tauri::{AppHandle, Emitter};
+
+fn build_shell_command(cwd: Option<&String>) -> CommandBuilder {
+    #[cfg(target_os = "windows")]
+    {
+        let exe = std::env::var("COMSPEC").unwrap_or_else(|_| {
+            std::env::var("SystemRoot")
+                .map(|root| format!("{}\\System32\\cmd.exe", root))
+                .unwrap_or_else(|_| "cmd.exe".to_string())
+        });
+        let mut cmd = CommandBuilder::new(exe);
+        cmd.env("TERM", "xterm-256color");
+        if let Some(dir) = cwd {
+            cmd.cwd(dir);
+        }
+        cmd
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = if Path::new("/bin/zsh").exists() {
+            CommandBuilder::new("/bin/zsh")
+        } else {
+            CommandBuilder::new("bash")
+        };
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        cmd.env("LANG", "en_US.UTF-8");
+        if let Some(dir) = cwd {
+            cmd.cwd(dir);
+        }
+        cmd
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let shell = if Path::new("/bin/bash").exists() {
+            "/bin/bash"
+        } else if Path::new("/bin/sh").exists() {
+            "/bin/sh"
+        } else {
+            "sh"
+        };
+        let mut cmd = CommandBuilder::new(shell);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        if std::env::var("LANG").is_err() {
+            cmd.env("LANG", "C.UTF-8");
+        }
+        if let Some(dir) = cwd {
+            cmd.cwd(dir);
+        }
+        cmd
+    }
+}
 
 /// PTY 实例
 struct PtyInstance {
@@ -39,25 +94,7 @@ impl PtyManager {
             })
             .map_err(|e| e.to_string())?;
 
-        let cmd = if std::path::Path::new("/bin/zsh").exists() {
-            let mut cmd = CommandBuilder::new("zsh");
-            cmd.env("TERM", "xterm-256color");
-            cmd.env("COLORTERM", "truecolor");
-            cmd.env("LANG", "en_US.UTF-8");
-            if let Some(ref dir) = cwd {
-                cmd.cwd(dir);
-            }
-            cmd
-        } else {
-            let mut cmd = CommandBuilder::new("bash");
-            cmd.env("TERM", "xterm-256color");
-            cmd.env("COLORTERM", "truecolor");
-            cmd.env("LANG", "en_US.UTF-8");
-            if let Some(ref dir) = cwd {
-                cmd.cwd(dir);
-            }
-            cmd
-        };
+        let cmd = build_shell_command(cwd.as_ref());
 
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         drop(pair.slave);

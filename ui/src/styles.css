@@ -131,6 +131,64 @@ html, body, #root {
   height: 100%;
 }
 
+.status-bar-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 8px;
+}
+
+.terminal-ai-cli-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.terminal-ai-cli-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.terminal-ai-cli-chip.installed {
+  opacity: 1;
+}
+
+.terminal-ai-cli-chip.missing {
+  opacity: 0.5;
+}
+
+.terminal-ai-cli-chip:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.terminal-ai-cli-chip-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.terminal-ai-cli-chip-label {
+  white-space: nowrap;
+}
+
 .status-bar-right {
   flex-shrink: 0;
 }

@@ -5,7 +5,14 @@ import MonacoEditor from "./components/MonacoEditor";
 import TerminalPanel, { TerminalPanelHandle } from "./components/TerminalPanel";
 import QuickOpen, { QuickCommand } from "./components/QuickOpen";
 import StatusBar from "./components/StatusBar";
+import { AiCliShortcuts } from "./components/AiCliShortcuts";
 import { EditorSettings, THEMES } from "./settings";
+import {
+  isPathUnderWorkspaceRoot,
+  pathBasename,
+  pathDirname,
+  pathJoin,
+} from "./pathUtils";
 
 export interface OpenFile {
   path: string;
@@ -68,11 +75,6 @@ function normalizeFolders(folders: Array<string | null | undefined>): string[] {
   return result;
 }
 
-function dirname(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i > 0 ? path.slice(0, i) : "/";
-}
-
 function resolveWorkspacePath(baseDir: string, value: string): string {
   if (value.startsWith("file://")) {
     return decodeURIComponent(value.replace(/^file:\/\//, ""));
@@ -80,14 +82,13 @@ function resolveWorkspacePath(baseDir: string, value: string): string {
   if (value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value)) {
     return value;
   }
-  const parts = `${baseDir}/${value}`.split("/");
-  const stack: string[] = [];
-  for (const part of parts) {
+  let cur = baseDir.replace(/[/\\]+$/, "");
+  for (const part of value.split(/[/\\]+/)) {
     if (!part || part === ".") continue;
-    if (part === "..") stack.pop();
-    else stack.push(part);
+    if (part === "..") cur = pathDirname(cur);
+    else cur = pathJoin(cur, part);
   }
-  return `/${stack.join("/")}`;
+  return cur;
 }
 
 async function openWorkspaceWindow(folders: string[]) {
@@ -187,6 +188,15 @@ export default function App() {
   const terminalRef = useRef<TerminalPanelHandle>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
+  const runCliLineInTerminal = useCallback((line: string) => {
+    setShowTerminal(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        void terminalRef.current?.runLineInNewTerminal(line);
+      });
+    });
+  }, []);
+
   const [sidebarWidth, setSidebarWidth] = useState<number>(
     () => Number(localStorage.getItem("yac-sidebar-width")) || 220
   );
@@ -261,7 +271,7 @@ export default function App() {
   const getWorkspaceRootForPath = useCallback((path: string): string | null => {
     let best: string | null = null;
     for (const folder of workspaceFolders) {
-      if ((path === folder || path.startsWith(`${folder}/`)) && (!best || folder.length > best.length)) {
+      if (isPathUnderWorkspaceRoot(folder, path) && (!best || folder.length > best.length)) {
         best = folder;
       }
     }
@@ -275,7 +285,7 @@ export default function App() {
   const removeWorkspaceFolder = useCallback((path: string) => {
     setWorkspaceFolders((prev) => prev.filter((folder) => folder !== path));
     setOpenFiles((prev) => {
-      const next = prev.filter((file) => !(file.path === path || file.path.startsWith(`${path}/`)));
+      const next = prev.filter((file) => !isPathUnderWorkspaceRoot(path, file.path));
       setActiveFile((active) => {
         if (active && next.some((file) => file.path === active)) return active;
         return next[next.length - 1]?.path || null;
@@ -288,7 +298,7 @@ export default function App() {
     const { invoke } = await import("@tauri-apps/api/core");
     const text = await invoke<string>("read_file", { path, workspaceRoot: null });
     const workspace = JSON.parse(text) as { folders?: Array<{ path?: string; uri?: string }> };
-    const baseDir = dirname(path);
+    const baseDir = pathDirname(path);
     return normalizeFolders(
       (workspace.folders || [])
         .map((folder) => folder.path || folder.uri || "")
@@ -512,12 +522,14 @@ export default function App() {
       const { invoke } = await import("@tauri-apps/api/core");
       if (isUntitledPath(path)) {
         const { save } = await import("@tauri-apps/plugin-dialog");
-        const suggested = rootPath ? `${rootPath.replace(/\/$/, "")}/Untitled.txt` : undefined;
+        const suggested = rootPath
+          ? pathJoin(rootPath.replace(/[/\\]+$/, ""), "Untitled.txt")
+          : undefined;
         const dest = await save(suggested ? { defaultPath: suggested } : {});
         if (!dest || typeof dest !== "string") return;
         const wsRoot = getWorkspaceRootForPath(dest);
         await invoke("write_file", { path: dest, content: file.content, workspaceRoot: wsRoot });
-        const newName = dest.split("/").pop() || dest;
+        const newName = pathBasename(dest);
         setOpenFiles((prev) =>
           prev.map((f) => (f.path === path ? { ...f, path: dest, name: newName, dirty: false } : f))
         );
@@ -1205,6 +1217,11 @@ export default function App() {
         settings={editorSettings}
         theme={theme}
         onToggleTerminal={() => setShowTerminal((v) => !v)}
+        aiCliShortcuts={
+          workspaceFolders.length > 0 ? (
+            <AiCliShortcuts runPreparedCommand={runCliLineInTerminal} />
+          ) : undefined
+        }
       />
       {showQuickOpen && (
         <QuickOpen

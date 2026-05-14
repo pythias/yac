@@ -61,11 +61,45 @@ fn create_dir(path: String, workspace_root: Option<String>) -> Result<(), String
 
 #[tauri::command]
 fn reveal_in_finder(path: String) -> Result<(), String> {
-    std::process::Command::new("open")
-        .args(["-R", &path])
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    let path = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", path.to_str().ok_or("Invalid path")?])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut arg = std::ffi::OsString::from("/select,");
+        arg.push(path.as_os_str());
+        std::process::Command::new("explorer")
+            .arg(arg)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        use std::process::Command;
+        if path.is_dir() {
+            Command::new("xdg-open")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            let parent = path.parent().ok_or("No parent directory")?;
+            Command::new("xdg-open")
+                .arg(parent)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
 }
 
 #[tauri::command]
@@ -206,6 +240,31 @@ fn sync_view_menu_state(app: tauri::AppHandle, state: ViewMenuState) -> Result<(
     Ok(())
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CliBinarySpec {
+    id: String,
+    candidates: Vec<String>,
+}
+
+#[tauri::command]
+fn resolve_cli_binaries(
+    specs: Vec<CliBinarySpec>,
+) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+    let mut out = std::collections::HashMap::new();
+    for spec in specs {
+        let mut found: Option<String> = None;
+        for name in spec.candidates {
+            if let Ok(p) = which::which(&name) {
+                found = Some(p.to_string_lossy().into_owned());
+                break;
+            }
+        }
+        out.insert(spec.id, found);
+    }
+    Ok(out)
+}
+
 #[cfg_attr(mobile, tauri_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -231,11 +290,13 @@ pub fn run() {
             pty_close,
             sync_view_menu_state,
             sync_recent_files_menu,
+            resolve_cli_binaries,
         ])
         .setup(|app| {
             let handle = app.handle();
 
             // --- Menu Bar Implementation ---
+            #[cfg(target_os = "macos")]
             let app_menu = Submenu::with_items(
                 handle,
                 "Yac IDE",
@@ -248,6 +309,18 @@ pub fn run() {
                     &PredefinedMenuItem::hide(handle, None)?,
                     &PredefinedMenuItem::hide_others(handle, None)?,
                     &PredefinedMenuItem::show_all(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::quit(handle, None)?,
+                ],
+            )?;
+
+            #[cfg(not(target_os = "macos"))]
+            let app_menu = Submenu::with_items(
+                handle,
+                "Yac IDE",
+                true,
+                &[
+                    &PredefinedMenuItem::about(handle, None, None)?,
                     &PredefinedMenuItem::separator(handle)?,
                     &PredefinedMenuItem::quit(handle, None)?,
                 ],

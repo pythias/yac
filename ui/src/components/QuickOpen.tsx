@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { isPathUnderWorkspaceRoot } from "../pathUtils";
 
 interface QuickOpenProps {
   rootPaths: string[];
@@ -52,7 +53,7 @@ export default function QuickOpen({ rootPaths, onOpenFile, commands = [], onClos
     const files: FileEntry[] = [];
     const getWorkspaceRootForPath = (path: string) =>
       rootPaths
-        .filter((folder) => path === folder || path.startsWith(`${folder}/`))
+        .filter((folder) => isPathUnderWorkspaceRoot(folder, path))
         .sort((a, b) => b.length - a.length)[0] || null;
     const walk = async (dir: string) => {
       try {
