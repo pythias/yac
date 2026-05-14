@@ -59,15 +59,21 @@ jobs:
             echo "Developer ID Application signing identity not found in build.keychain."
             exit 1
           fi
+          CERT_TEAM_ID=$(echo "$CERT_ID" | sed -n 's/.*(\([A-Z0-9][A-Z0-9]*\)).*/\1/p')
+          if [ -z "$CERT_TEAM_ID" ]; then
+            echo "Could not extract Apple Team ID from signing identity."
+            exit 1
+          fi
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$CERT_TEAM_ID" >> "$GITHUB_ENV"
           echo "Using signing identity: $CERT_ID"
+          echo "Using Apple Team ID: $CERT_TEAM_ID"
 
       - name: Build Tauri app (Apple Silicon)
         run: cargo tauri build --target aarch64-apple-darwin
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Verify Apple Silicon signing
         run: |
@@ -82,7 +88,6 @@ jobs:
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Verify Intel signing
         run: |
