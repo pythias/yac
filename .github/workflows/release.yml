@@ -111,6 +111,9 @@ jobs:
 
       - name: Package DMGs and compute checksums
         id: dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
@@ -125,9 +128,23 @@ jobs:
           INTEL_L="${DEST_DIR}/Yac.IDE_latest_x64.dmg"
 
           cp "$ARM_SRC" "$ARM_V"
-          cp "$ARM_SRC" "$ARM_L"
           cp "$INTEL_SRC" "$INTEL_V"
-          cp "$INTEL_SRC" "$INTEL_L"
+
+          for DMG in "$ARM_V" "$INTEL_V"; do
+            codesign --display --verbose=4 "$DMG"
+            codesign --verify --strict --verbose=4 "$DMG"
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$DMG"
+            xcrun stapler validate "$DMG"
+            spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+          done
+
+          cp "$ARM_V" "$ARM_L"
+          cp "$INTEL_V" "$INTEL_L"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha256_arm=$(shasum -a 256 "$ARM_V" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
