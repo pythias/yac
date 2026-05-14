@@ -77,7 +77,13 @@ jobs:
 
       - name: Verify Apple Silicon signing
         run: |
-          APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Yac IDE.app"
+          DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          codesign --display --verbose=4 "$DMG"
+          codesign --verify --strict --verbose=4 "$DMG"
+          MOUNT_DIR=$(mktemp -d)
+          hdiutil attach "$DMG" -mountpoint "$MOUNT_DIR" -nobrowse -readonly
+          trap 'hdiutil detach "$MOUNT_DIR"' EXIT
+          APP="$MOUNT_DIR/Yac IDE.app"
           codesign --display --verbose=4 "$APP"
           codesign --verify --deep --strict --verbose=4 "$APP"
           spctl --assess --type execute --verbose=4 "$APP"
@@ -91,7 +97,13 @@ jobs:
 
       - name: Verify Intel signing
         run: |
-          APP="src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Yac IDE.app"
+          DMG=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          codesign --display --verbose=4 "$DMG"
+          codesign --verify --strict --verbose=4 "$DMG"
+          MOUNT_DIR=$(mktemp -d)
+          hdiutil attach "$DMG" -mountpoint "$MOUNT_DIR" -nobrowse -readonly
+          trap 'hdiutil detach "$MOUNT_DIR"' EXIT
+          APP="$MOUNT_DIR/Yac IDE.app"
           codesign --display --verbose=4 "$APP"
           codesign --verify --deep --strict --verbose=4 "$APP"
           spctl --assess --type execute --verbose=4 "$APP"
